@@ -1,0 +1,29 @@
+const mongoose = require("mongoose");
+
+const cartItemSchema = new mongoose.Schema({
+  productId: String,
+  name: String,
+  price: Number,
+  quantity: { type: Number, default: 1 },
+});
+
+const sessionSchema = new mongoose.Schema(
+  {
+    waNumber: { type: String, required: true, unique: true },
+    state: { type: String, default: "IDLE" },
+    cart: [cartItemSchema],
+    currentCategory: { type: String, default: null },
+    currentSubcategory: { type: String, default: null },
+    pendingProductId: { type: String, default: null },
+    deliveryAddress: { type: String, default: null },
+    agentMode: { type: Boolean, default: false },
+    lastActivity: { type: Date, default: Date.now },
+  },
+  { timestamps: true }
+);
+
+sessionSchema.pre("save", function () {
+  this.lastActivity = new Date();
+});
+
+module.exports = mongoose.model("Session", sessionSchema);

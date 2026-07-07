@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: psychowrld-bot
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: MONGO_URI
+        sync: false
+      - key: META_VERIFY_TOKEN
+        sync: false
+      - key: META_ACCESS_TOKEN
+        sync: false
+      - key: META_PHONE_NUMBER_ID
+        sync: false
+      - key: META_WABA_ID
+        sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: ADMIN_WHATSAPP_NUMBER
+        sync: false
