@@ -2,7 +2,7 @@ const { VERIFY_TOKEN } = require("../config/whatsapp.config");
 const { sendText, sendButtons } = require("../services/whatsapp.service");
 const {
   sendWelcomeMenu, sendShopMenu, sendCategories, sendMoreCategories,
-  sendCollections, sendSubcategories, sendItems, addToCart, doAddToCart,
+  sendCollections, sendSubcategories, sendItems, addToCart, doAddToCart, askColor,
   sendCartSummary, sendEditOrder, removeFromCart, askDeliveryAddress,
   confirmOrderWithAddress, trackOrder, sendManufacturingEnquiry, sendManufacturingRedirect,
 } = require("../services/menu.service");
@@ -66,6 +66,20 @@ const handleText = async (from, text, session) => {
 
   // Awaiting address
   if (session.state === "AWAITING_ADDRESS") return await confirmOrderWithAddress(from, session, text);
+
+  // Awaiting custom size
+  if (session.state === "AWAITING_CUSTOM_SIZE") {
+    const product = await Product.findById(session.pendingProductId);
+    if (product) return await askColor(from, session, product, text);
+    return await sendWelcomeMenu(from, session);
+  }
+
+  // Awaiting custom color
+  if (session.state === "AWAITING_CUSTOM_COLOR") {
+    const product = await Product.findById(session.pendingProductId);
+    if (product) return await doAddToCart(from, session, product, session.pendingSize || "One Size", text);
+    return await sendWelcomeMenu(from, session);
+  }
 
   // Agent mode — don't auto reply
   if (session.agentMode) { console.log(`📨 Agent msg from ${from}: ${text}`); return; }
@@ -146,11 +160,44 @@ const handleListReply = async (from, id, title, session) => {
 
   // Size selected — format: SIZE_productId_size
   if (id.startsWith("SIZE_")) {
-    const parts = id.replace("SIZE_", "").split("_");
-    const size = parts[parts.length - 1];
-    const productId = parts.slice(0, -1).join("_");
+    const withoutPrefix = id.replace("SIZE_", "");
+    const lastUnderscore = withoutPrefix.lastIndexOf("_");
+    const productId = withoutPrefix.substring(0, lastUnderscore);
+    const sizeRaw = withoutPrefix.substring(lastUnderscore + 1);
+
+    // Custom size
+    if (sizeRaw === "CUSTOM") {
+      session.state = "AWAITING_CUSTOM_SIZE";
+      session.pendingProductId = productId;
+      await session.save();
+      await sendText(from, "📝 Please type your custom size (e.g. *32 waist*, *UK 12*, *XS*):");
+      return;
+    }
+
+    const size = sizeRaw.replace(/_/g, " ");
     const product = await Product.findById(productId);
-    if (product) return await doAddToCart(from, session, product, size);
+    if (product) return await askColor(from, session, product, size);
+  }
+
+  // Color selected — format: COLOR_productId_color
+  if (id.startsWith("COLOR_")) {
+    const withoutPrefix = id.replace("COLOR_", "");
+    const lastUnderscore = withoutPrefix.lastIndexOf("_");
+    const productId = withoutPrefix.substring(0, lastUnderscore);
+    const colorRaw = withoutPrefix.substring(lastUnderscore + 1);
+
+    // Custom color
+    if (colorRaw === "CUSTOM") {
+      session.state = "AWAITING_CUSTOM_COLOR";
+      session.pendingProductId = productId;
+      await session.save();
+      await sendText(from, "📝 Please type your custom color (e.g. *Navy Blue*, *Forest Green*):");
+      return;
+    }
+
+    const color = colorRaw.replace(/_/g, " ");
+    const product = await Product.findById(productId);
+    if (product) return await doAddToCart(from, session, product, session.pendingSize || "One Size", color);
   }
 
   // Remove cart item

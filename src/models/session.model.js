@@ -15,6 +15,8 @@ const sessionSchema = new mongoose.Schema(
     currentCategory: { type: String, default: null },
     currentSubcategory: { type: String, default: null },
     pendingProductId: { type: String, default: null },
+    pendingSize: { type: String, default: null },
+    pendingColor: { type: String, default: null },
     deliveryAddress: { type: String, default: null },
     agentMode: { type: Boolean, default: false },
     lastActivity: { type: Date, default: Date.now },

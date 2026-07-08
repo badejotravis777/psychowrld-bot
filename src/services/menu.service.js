@@ -204,29 +204,73 @@ const addToCart = async (to, session, productId) => {
     return;
   }
 
-  // Ask for size if product has sizes
+  session.pendingProductId = productId.toString();
+  session.pendingSize = null;
+  session.pendingColor = null;
+  await session.save();
+
+  // Ask for size first if product has sizes
   if (product.sizes && product.sizes.length > 0 && product.sizes[0] !== "One Size") {
     session.state = "AWAITING_SIZE";
-    session.pendingProductId = productId;
     await session.save();
 
-    const sizeList = product.sizes.map((s) => ({ id: `SIZE_${productId}_${s}`, title: s, description: `Size ${s}` }));
+    const sizeRows = product.sizes.map((s) => ({
+      id: `SIZE_${productId}_${s.replace(/\s/g, "_")}`,
+      title: s.length > 24 ? s.substring(0, 24) : s,
+      description: `Size ${s}`,
+    }));
+
+    // Add custom size option
+    sizeRows.push({ id: `SIZE_${productId}_CUSTOM`, title: "📝 Custom Size", description: "Enter your own size" });
 
     await sendList(
       to,
       `📏 Select Size`,
       `*${product.name}* — ₦${product.price.toLocaleString()}\n\nChoose your size:`,
       "Select Size",
-      [{ title: "Available Sizes", rows: sizeList }]
+      [{ title: "Available Sizes", rows: sizeRows }]
     );
     return;
   }
 
-  await doAddToCart(to, session, product, "One Size");
+  // No sizes — check for colors
+  await askColor(to, session, product, "One Size");
 };
 
-const doAddToCart = async (to, session, product, size) => {
-  const cartKey = `${product._id}_${size}`;
+// ─── ASK COLOR ───
+const askColor = async (to, session, product, size) => {
+  session.pendingSize = size;
+  await session.save();
+
+  if (product.colors && product.colors.length > 0) {
+    session.state = "AWAITING_COLOR";
+    await session.save();
+
+    const colorRows = product.colors.map((c) => ({
+      id: `COLOR_${product._id}_${c.replace(/\s/g, "_")}`,
+      title: c.length > 24 ? c.substring(0, 24) : c,
+      description: `Color: ${c}`,
+    }));
+
+    colorRows.push({ id: `COLOR_${product._id}_CUSTOM`, title: "📝 Custom Color", description: "Enter your own color" });
+
+    await sendList(
+      to,
+      `🎨 Select Color`,
+      `*${product.name}* (${size})\n\nChoose your color:`,
+      "Select Color",
+      [{ title: "Available Colors", rows: colorRows }]
+    );
+    return;
+  }
+
+  // No colors either — add to cart directly
+  await doAddToCart(to, session, product, size, "");
+};
+
+const doAddToCart = async (to, session, product, size, color) => {
+  const colorLabel = color ? ` / ${color}` : "";
+  const cartKey = `${product._id}_${size}_${color || ""}`;
   const existing = session.cart.find((i) => i.productId === cartKey);
 
   if (existing) {
@@ -234,20 +278,23 @@ const doAddToCart = async (to, session, product, size) => {
   } else {
     session.cart.push({
       productId: cartKey,
-      name: `${product.name} (${size})`,
+      name: `${product.name} (${size}${colorLabel})`,
       price: product.price,
       quantity: 1,
     });
   }
 
   session.state = "BROWSING_ITEMS";
+  session.pendingProductId = null;
+  session.pendingSize = null;
+  session.pendingColor = null;
   await session.save();
 
   const catId = `CAT_${(session.currentCategory || "").toUpperCase().replace(/\s/g, "_")}`;
 
   await sendButtons(
     to,
-    `✅ *${product.name} (${size})* added to cart!\n\n🛒 ${session.cart.length} item(s) in cart`,
+    `✅ *${product.name} (${size}${colorLabel})* added to cart!\n\n🛒 ${session.cart.length} item(s) in cart`,
     [
       { id: "VIEW_CART", title: "🛒 View Cart" },
       { id: catId, title: "➕ Add More" },
@@ -449,6 +496,7 @@ module.exports = {
   sendItems,
   addToCart,
   doAddToCart,
+  askColor,
   sendCartSummary,
   sendEditOrder,
   removeFromCart,
