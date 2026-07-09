@@ -5,12 +5,16 @@ const productSchema = new mongoose.Schema(
     name: { type: String, required: true },
     description: { type: String, default: "" },
     price: { type: Number, required: true },
-    category: { type: String, required: true },      // e.g. "Football"
-    subcategory: { type: String, required: true },   // e.g. "Jerseys"
+    category: { type: String, required: true },
+    subcategory: { type: String, required: true },
     available: { type: Boolean, default: true },
     emoji: { type: String, default: "🛍️" },
-    sizes: { type: [String], default: [] },          // e.g. ["S","M","L","XL"]
+    sizes: { type: [String], default: [] },
+    colors: { type: [String], default: [] },
+    images: { type: [String], default: [] },
     imageUrl: { type: String, default: "" },
+    imagePublicId: { type: String, default: "" },
+    imagePublicIds: { type: [String], default: [] },
   },
   { timestamps: true }
 );
