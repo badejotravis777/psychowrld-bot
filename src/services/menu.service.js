@@ -215,13 +215,13 @@ const addToCart = async (to, session, productId) => {
     await session.save();
 
     const sizeRows = product.sizes.map((s) => ({
-      id: `SIZE_${productId}_${s.replace(/\s/g, "_")}`,
+      id: `SIZE_${productId}__${s.replace(/\s/g, "_")}`,
       title: s.length > 24 ? s.substring(0, 24) : s,
       description: `Size ${s}`,
     }));
 
     // Add custom size option
-    sizeRows.push({ id: `SIZE_${productId}_CUSTOM`, title: "📝 Custom Size", description: "Enter your own size" });
+    sizeRows.push({ id: `SIZE_${productId}__CUSTOM`, title: "📝 Custom Size", description: "Enter your own size" });
 
     await sendList(
       to,
@@ -247,12 +247,12 @@ const askColor = async (to, session, product, size) => {
     await session.save();
 
     const colorRows = product.colors.map((c) => ({
-      id: `COLOR_${product._id}_${c.replace(/\s/g, "_")}`,
+      id: `COLOR_${product._id}__${c.replace(/\s/g, "_")}`,
       title: c.length > 24 ? c.substring(0, 24) : c,
       description: `Color: ${c}`,
     }));
 
-    colorRows.push({ id: `COLOR_${product._id}_CUSTOM`, title: "📝 Custom Color", description: "Enter your own color" });
+    colorRows.push({ id: `COLOR_${product._id}__CUSTOM`, title: "📝 Custom Color", description: "Enter your own color" });
 
     await sendList(
       to,

@@ -158,14 +158,13 @@ const handleListReply = async (from, id, title, session) => {
     return await addToCart(from, session, productId);
   }
 
-  // Size selected — format: SIZE_productId_size
+  // Size selected — format: SIZE_productId__size
   if (id.startsWith("SIZE_")) {
     const withoutPrefix = id.replace("SIZE_", "");
-    const lastUnderscore = withoutPrefix.lastIndexOf("_");
-    const productId = withoutPrefix.substring(0, lastUnderscore);
-    const sizeRaw = withoutPrefix.substring(lastUnderscore + 1);
+    const separatorIndex = withoutPrefix.indexOf("__");
+    const productId = withoutPrefix.substring(0, separatorIndex);
+    const sizeRaw = withoutPrefix.substring(separatorIndex + 2);
 
-    // Custom size
     if (sizeRaw === "CUSTOM") {
       session.state = "AWAITING_CUSTOM_SIZE";
       session.pendingProductId = productId;
@@ -179,14 +178,13 @@ const handleListReply = async (from, id, title, session) => {
     if (product) return await askColor(from, session, product, size);
   }
 
-  // Color selected — format: COLOR_productId_color
+  // Color selected — format: COLOR_productId__color
   if (id.startsWith("COLOR_")) {
     const withoutPrefix = id.replace("COLOR_", "");
-    const lastUnderscore = withoutPrefix.lastIndexOf("_");
-    const productId = withoutPrefix.substring(0, lastUnderscore);
-    const colorRaw = withoutPrefix.substring(lastUnderscore + 1);
+    const separatorIndex = withoutPrefix.indexOf("__");
+    const productId = withoutPrefix.substring(0, separatorIndex);
+    const colorRaw = withoutPrefix.substring(separatorIndex + 2);
 
-    // Custom color
     if (colorRaw === "CUSTOM") {
       session.state = "AWAITING_CUSTOM_COLOR";
       session.pendingProductId = productId;
