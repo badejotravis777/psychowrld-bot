@@ -245,13 +245,39 @@ const escalateToAgent = async (from, session) => {
 // Handle payment
 const handlePayment = async (from, orderId) => {
   const Order = require("../models/order.model");
+  const { initializePayment } = require("../services/payment.service");
+
   const order = await Order.findOne({ orderId });
   if (!order) { await sendText(from, "❌ Order not found. Type *agent* for help."); return; }
 
-  await sendText(
-    from,
-    `💳 *Payment for Order ${orderId}*\n\nAmount: ₦${order.total?.toLocaleString()}\n\nPlease transfer to:\n🏦 Bank: GT Bank\n💳 Account: 0123456789\n👤 Name: Psychowrld Luxury Wears\n\nSend proof of payment here or type *agent* to speak with us.\n\n_Payment gateway coming soon!_`
+  await sendText(from, "⏳ Generating your payment link...");
+
+  const payment = await initializePayment(
+    null,
+    order.total,
+    orderId,
+    from
   );
+
+  if (payment.success) {
+    await sendButtons(
+      from,
+      `💳 *Payment for Order ${orderId}*\n\n` +
+        `Amount: *₦${order.total?.toLocaleString()}*\n\n` +
+        `Tap the link below to pay securely via card or bank transfer:\n\n` +
+        `👉 ${payment.paymentUrl}\n\n` +
+        `_Your order will be confirmed automatically once payment is complete._`,
+      [
+        { id: "TRACK_ORDER", title: "📦 Track Order" },
+        { id: "TALK_AGENT", title: "💬 Need Help?" },
+      ]
+    );
+  } else {
+    await sendText(
+      from,
+      `❌ Could not generate payment link. Please contact us:\n\nType *agent* to speak with our team.`
+    );
+  }
 };
 
 module.exports = { verifyWebhook, handleIncomingMessage };
