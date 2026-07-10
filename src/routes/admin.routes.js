@@ -3,6 +3,7 @@ const router = express.Router();
 const Order = require("../models/order.model");
 const Product = require("../models/product.model");
 const { sendText } = require("../services/whatsapp.service");
+const { syncProductToCatalog, removeFromCatalog, syncAllProducts } = require("../services/catalog.service");
 
 // Get all orders
 router.get("/orders", async (req, res) => {
@@ -21,7 +22,6 @@ router.patch("/orders/:orderId/status", async (req, res) => {
 
   if (!order) return res.status(404).json({ error: "Order not found" });
 
-  // Notify customer
   const statusMessages = {
     preparing: "👨‍🍳 Your order is being prepared!",
     out_for_delivery: "🚴 Your order is on the way! Our rider is heading to you.",
@@ -49,6 +49,8 @@ router.get("/products", async (req, res) => {
 router.post("/products", async (req, res) => {
   const product = new Product(req.body);
   await product.save();
+  // Sync to Meta catalog in background
+  syncProductToCatalog(product).catch(console.error);
   res.json(product);
 });
 
@@ -58,7 +60,20 @@ router.patch("/products/:id/toggle", async (req, res) => {
   if (!product) return res.status(404).json({ error: "Product not found" });
   product.available = !product.available;
   await product.save();
+  // Sync availability change to catalog
+  syncProductToCatalog(product).catch(console.error);
   res.json(product);
+});
+
+// Sync all products to catalog manually
+router.post("/sync-catalog", async (req, res) => {
+  try {
+    const products = await Product.find({ available: true });
+    const result = await syncAllProducts(products);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
