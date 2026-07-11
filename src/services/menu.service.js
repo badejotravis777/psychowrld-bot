@@ -17,23 +17,24 @@ const sendWelcomeMenu = async (to, session) => {
 
   await sendList(
     to,
-    "👋 Psychowrld Luxury Wears",
-    "Welcome! 🔥 Your premium sports & streetwear destination.\n\nWhat would you like to do?",
-    "Get Started",
+    "👋 Psychowrld",
+    "Hi! 👋 I'm Mide.\n\nWelcome to Psychowrld. It's great to have you here. 😊\n\nI'm here to help you shop, place a custom order, book a manufacturing appointment, track an order, or answer any questions.\n\nOur team is available from 9:00 AM to 8:00 PM, but don't worry, you don't have to wait. You can place an order or book an appointment anytime, day or night, and we'll get back to you as soon as we're online.\n\nWhat would you like to do today?\n\n_Take your time. I'm here whenever you need me. 💙_",
+    "Choose an Option",
     [
       {
         title: "Main Menu",
         rows: [
-          { id: "MAIN_SHOP", title: "🛒 Shop Now", description: "Browse our full catalog" },
-          { id: "TRACK_ORDER", title: "📦 Track Order", description: "Check your order status" },
-          { id: "MANUFACTURING_ENQUIRY", title: "🏭 Manufacturing", description: "Custom & bulk orders" },
-          { id: "TALK_AGENT", title: "💬 Talk to Agent", description: "Speak with our team" },
+          { id: "Visit Psychowrld store", title: "🛍️ Shop Products", description: "Browse our full catalog" },
+          { id: "CUSTOM_ORDER", title: "✍️ Custom Order", description: "Tell us what you need" },
+          { id: "MANUFACTURING_ENQUIRY", title: "📅 Manufacturing", description: "Book an appointment" },
+          { id: "TRACK_ORDER", title: "📦 Track My Order", description: "Check your order status" },
+          { id: "VISIT_WEBSITE", title: "🌐 Visit Our Website", description: "See more at psychowrld.co" },
+          { id: "TALK_AGENT", title: "💬 Talk to Our Team", description: "Speak with us directly" },
         ],
       },
     ]
   );
 };
-
 // ─── SHOP MENU ───
 const sendShopMenu = async (to, session) => {
   session.state = "SHOP_MENU";
@@ -530,6 +531,32 @@ const processNextInQueue = async (to, session) => {
   session.pendingQuantity = next.quantity;
   await session.save();
   await addToCart(to, session, next.productId);
+};
+
+// ─── CUSTOM ORDER ───
+const sendCustomOrderPrompt = async (to, session) => {
+  session.state = "CUSTOM_ORDER_MODE";
+  await session.save();
+
+  await sendText(
+    to,
+    `✍️ *Custom Order*\n\nTell us exactly what you'd like — item type, size, color, and any special design details.\n\nOnce you send it, our team will review and get back to you with pricing and timeline.`
+  );
+};
+
+// ─── WEBSITE LINK ───
+const sendWebsiteLink = async (to, session) => {
+  session.state = "IDLE";
+  await session.save();
+
+  await sendButtons(
+    to,
+    `🌐 *Visit our website:*\n\nhttps://psychowrld.co\n\nBrowse our full collection, lookbooks, and more!`,
+    [
+      { id: "MAIN_SHOP", title: "🛒 Shop Now" },
+      { id: "TALK_AGENT", title: "💬 Talk to Agent" },
+    ]
+  );
 };
 
 module.exports = {

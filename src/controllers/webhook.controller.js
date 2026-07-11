@@ -5,7 +5,7 @@ const {
   sendCollections, sendSubcategories, sendItems, addToCart, doAddToCart, askColor,
   sendCartSummary, sendEditOrder, removeFromCart, askDeliveryAddress,
   confirmOrderWithAddress, trackOrder, sendManufacturingEnquiry, sendManufacturingRedirect,
-  handleOrderMessage,
+  handleOrderMessage, sendCustomOrderPrompt, sendWebsiteLink,
 } = require("../services/menu.service");
 const Session = require("../models/session.model");
 const Product = require("../models/product.model");
@@ -80,6 +80,17 @@ const handleText = async (from, text, session) => {
     return await sendWelcomeMenu(from, session);
   }
 
+  if (session.state === "CUSTOM_ORDER_MODE") {
+    session.state = "IDLE";
+    await session.save();
+    await sendText(from, "✅ Got it! Our team will review your custom order request and get back to you shortly. You can also type *agent* anytime to chat with us directly.");
+    const adminNumber = process.env.ADMIN_WHATSAPP_NUMBER;
+    if (adminNumber) {
+      await sendText(adminNumber, `🔔 *Custom Order Request*\nCustomer: +${from}\nDetails: ${text}`);
+    }
+    return;
+  }
+
   if (session.agentMode) { console.log(`📨 Agent msg from ${from}: ${text}`); return; }
 
   await sendButtons(from, "👋 Not sure what you mean. What would you like to do?", [
@@ -104,6 +115,8 @@ const handleButton = async (from, id, session) => {
   if (id === "CONFIRM_ORDER") return await askDeliveryAddress(from, session);
   if (id === "MANUFACTURING_ENQUIRY") return await sendManufacturingEnquiry(from, session);
   if (id === "MANUFACTURING_PROCEED") return await sendManufacturingRedirect(from, session);
+  if (id === "CUSTOM_ORDER") return await sendCustomOrderPrompt(from, session);
+  if (id === "VISIT_WEBSITE") return await sendWebsiteLink(from, session);
 
   if (id.startsWith("CAT_")) {
     const categoryName = await findRealCategoryName(id.replace("CAT_", ""));
