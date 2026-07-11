@@ -116,36 +116,66 @@ const sendCollections = async (to, session) => {
 };
 
 // ─── SUBCATEGORIES ───
+// ─── SUBCATEGORIES — now shown as image sections in one message, like Meta's own catalog UI ───
 const sendSubcategories = async (to, session, categoryName) => {
-  session.state = "BROWSING_SUBCATEGORIES";
+  session.state = "BROWSING_ITEMS";
   session.currentCategory = categoryName;
   await session.save();
 
-  const subcategories = await Product.distinct("subcategory", {
+  const products = await Product.find({
     category: categoryName,
     available: true,
-  });
+  }).limit(30); // WhatsApp product_list messages cap at 30 items total
 
-  if (subcategories.length === 0) {
+  if (products.length === 0) {
     await sendText(to, `😔 Nothing in ${categoryName} right now.`);
     return await sendCategories(to, session);
   }
 
-  if (subcategories.length === 1) {
-    return await sendItems(to, session, categoryName, subcategories[0]);
+  const withImages = products.filter((p) => p.images && p.images.length > 0);
+
+  // Fallback: nothing synced to the catalog yet — use the old plain text picker
+  if (withImages.length === 0 || !CATALOG_ID) {
+    const subcategories = [...new Set(products.map((p) => p.subcategory))];
+
+    if (subcategories.length === 1) {
+      return await sendItems(to, session, categoryName, subcategories[0]);
+    }
+
+    const rows = subcategories.slice(0, 9).map((sub) => ({
+      id: `SUB_${categoryName.toUpperCase().replace(/\s/g, "_")}__${sub.toUpperCase().replace(/\s/g, "_")}`,
+      title: sub.length > 24 ? sub.substring(0, 24) : sub,
+      description: `View ${sub}`,
+    }));
+    rows.push({ id: "BROWSE_CATEGORIES", title: "⬅️ Back", description: "Back to categories" });
+
+    return await sendList(to, `📦 ${categoryName}`, "Select a subcategory:", "View Items", [
+      { title: categoryName, rows },
+    ]);
   }
 
-  const rows = subcategories.slice(0, 9).map((sub) => ({
-    id: `SUB_${categoryName.toUpperCase().replace(/\s/g, "_")}__${sub.toUpperCase().replace(/\s/g, "_")}`,
-    title: sub.length > 24 ? sub.substring(0, 24) : sub,
-    description: `View ${sub}`,
-  }));
+  // Group products by subcategory into sections — e.g. "Sweater", "World Cup Jersey", etc.
+  const sectionsMap = {};
+  withImages.forEach((p) => {
+    const sub = p.subcategory || "Other";
+    if (!sectionsMap[sub]) sectionsMap[sub] = [];
+    sectionsMap[sub].push({ product_retailer_id: p._id.toString() });
+  });
 
-  rows.push({ id: "BROWSE_CATEGORIES", title: "⬅️ Back", description: "Back to categories" });
+  const sections = Object.entries(sectionsMap)
+    .slice(0, 10) // WhatsApp allows up to 10 sections per message
+    .map(([title, product_items]) => ({ title, product_items }));
 
-  await sendList(to, `📦 ${categoryName}`, "Select a subcategory:", "View Items", [
-    { title: categoryName, rows },
-  ]);
+  await sendProductList(
+    to,
+    `🛍️ ${categoryName}`,
+    "Browse by section — tap an item to view details and add it to your cart:",
+    "Psychowrld Luxury Wears",
+    CATALOG_ID,
+    sections
+  );
+
+  await sendButtons(to, "Need to go back?", [{ id: "BROWSE_CATEGORIES", title: "⬅️ Back" }]);
 };
 
 // ─── ITEMS IN SUBCATEGORY (now shows real images via Multi-Product Message) ───
