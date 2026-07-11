@@ -24,7 +24,7 @@ const sendWelcomeMenu = async (to, session) => {
       {
         title: "Main Menu",
         rows: [
-          { id: "Visit Psychowrld store", title: "🛍️ Shop Products", description: "Browse our full catalog" },
+          { id: "MAIN_SHOP", title: "🛍️ Visit Psychowrld Store", description: "Browse our full catalog" },
           { id: "CUSTOM_ORDER", title: "✍️ Custom Order", description: "Tell us what you need" },
           { id: "MANUFACTURING_ENQUIRY", title: "📅 Manufacturing", description: "Book an appointment" },
           { id: "TRACK_ORDER", title: "📦 Track My Order", description: "Check your order status" },

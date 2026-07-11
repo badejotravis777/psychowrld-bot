@@ -117,7 +117,7 @@ const handleButton = async (from, id, session) => {
   if (id === "MANUFACTURING_PROCEED") return await sendManufacturingRedirect(from, session);
   if (id === "CUSTOM_ORDER") return await sendCustomOrderPrompt(from, session);
   if (id === "VISIT_WEBSITE") return await sendWebsiteLink(from, session);
-
+  if (id === "CLEAR_CART") return await removeFromCart(from, session, "CLEAR");
   if (id.startsWith("CAT_")) {
     const categoryName = await findRealCategoryName(id.replace("CAT_", ""));
     if (categoryName) return await sendSubcategories(from, session, categoryName);
