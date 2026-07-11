@@ -579,4 +579,6 @@ module.exports = {
   sendManufacturingEnquiry,
   sendManufacturingRedirect,
   handleOrderMessage,
+  sendCustomOrderPrompt,
+  sendWebsiteLink,
 };
