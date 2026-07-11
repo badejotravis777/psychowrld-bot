@@ -7,6 +7,11 @@ const cartItemSchema = new mongoose.Schema({
   quantity: { type: Number, default: 1 },
 });
 
+const orderQueueItemSchema = new mongoose.Schema({
+  productId: String,
+  quantity: Number,
+});
+
 const sessionSchema = new mongoose.Schema(
   {
     waNumber: { type: String, required: true, unique: true },
@@ -17,6 +22,8 @@ const sessionSchema = new mongoose.Schema(
     pendingProductId: { type: String, default: null },
     pendingSize: { type: String, default: null },
     pendingColor: { type: String, default: null },
+    pendingQuantity: { type: Number, default: null },
+    orderQueue: [orderQueueItemSchema],
     deliveryAddress: { type: String, default: null },
     agentMode: { type: Boolean, default: false },
     lastActivity: { type: Date, default: Date.now },

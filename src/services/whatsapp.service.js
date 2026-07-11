@@ -11,12 +11,7 @@ const sendText = async (to, text) => {
   try {
     await axios.post(
       API_URL,
-      {
-        messaging_product: "whatsapp",
-        to,
-        type: "text",
-        text: { body: text },
-      },
+      { messaging_product: "whatsapp", to, type: "text", text: { body: text } },
       { headers }
     );
   } catch (err) {
@@ -64,10 +59,7 @@ const sendList = async (to, headerText, bodyText, buttonLabel, sections) => {
           type: "list",
           header: { type: "text", text: headerText },
           body: { text: bodyText },
-          action: {
-            button: buttonLabel,
-            sections,
-          },
+          action: { button: buttonLabel, sections },
         },
       },
       { headers }
@@ -77,4 +69,28 @@ const sendList = async (to, headerText, bodyText, buttonLabel, sections) => {
   }
 };
 
-module.exports = { sendText, sendButtons, sendList };
+// Send a multi-product message — shows real product images inline in chat
+const sendProductList = async (to, headerText, bodyText, footerText, catalogId, sections) => {
+  try {
+    await axios.post(
+      API_URL,
+      {
+        messaging_product: "whatsapp",
+        to,
+        type: "interactive",
+        interactive: {
+          type: "product_list",
+          header: { type: "text", text: headerText },
+          body: { text: bodyText },
+          footer: { text: footerText },
+          action: { catalog_id: catalogId, sections },
+        },
+      },
+      { headers }
+    );
+  } catch (err) {
+    console.error("❌ sendProductList error:", err.response?.data || err.message);
+  }
+};
+
+module.exports = { sendText, sendButtons, sendList, sendProductList };
