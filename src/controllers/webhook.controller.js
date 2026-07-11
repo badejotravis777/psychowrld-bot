@@ -142,6 +142,8 @@ const handleListReply = async (from, id, title, session) => {
   if (id === "TALK_AGENT") return await escalateToAgent(from, session);
   if (id === "MANUFACTURING_ENQUIRY") return await sendManufacturingEnquiry(from, session);
   if (id === "MANUFACTURING_PROCEED") return await sendManufacturingRedirect(from, session);
+  if (id === "CUSTOM_ORDER") return await sendCustomOrderPrompt(from, session);
+  if (id === "VISIT_WEBSITE") return await sendWebsiteLink(from, session);
   if (id === "CLEAR_CART") return await removeFromCart(from, session, "CLEAR");
 
   if (id.startsWith("CAT_")) {
