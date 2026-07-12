@@ -17,17 +17,19 @@ const sendWelcomeMenu = async (to, session) => {
 
   await sendList(
     to,
-    "👋 Psychowrld Luxury Wears",
-    "Welcome! 🔥 Your premium sports & streetwear destination.\n\nWhat would you like to do?",
-    "Get Started",
+    "👋 Psychowrld",
+    "Hi! 👋 I'm Mide.\n\nWelcome to Psychowrld. It's great to have you here. 😊\n\nI'm here to help you shop, place a custom order, book a manufacturing appointment, track an order, or answer any questions.\n\nOur team is available from 9:00 AM to 8:00 PM, but don't worry, you don't have to wait. You can place an order or book an appointment anytime, day or night, and we'll get back to you as soon as we're online.\n\nWhat would you like to do today?\n\n_Take your time. I'm here whenever you need me. 💙_",
+    "Choose an Option",
     [
       {
         title: "Main Menu",
         rows: [
-          { id: "MAIN_SHOP", title: "🛒 Shop Now", description: "Browse our full catalog" },
-          { id: "TRACK_ORDER", title: "📦 Track Order", description: "Check your order status" },
-          { id: "MANUFACTURING_ENQUIRY", title: "🏭 Manufacturing", description: "Custom & bulk orders" },
-          { id: "TALK_AGENT", title: "💬 Talk to Agent", description: "Speak with our team" },
+          { id: "MAIN_SHOP", title: "🛍️ Visit Psychowrld Store", description: "Browse our full catalog" },
+          { id: "CUSTOM_ORDER", title: "✍️ Custom Order", description: "Tell us what you need" },
+          { id: "MANUFACTURING_ENQUIRY", title: "📅 Manufacturing", description: "Book an appointment" },
+          { id: "TRACK_ORDER", title: "📦 Track My Order", description: "Check your order status" },
+          { id: "VISIT_WEBSITE", title: "🌐 Visit Our Website", description: "See more at psychowrld.co" },
+          { id: "TALK_AGENT", title: "💬 Talk to Our Team", description: "Speak with us directly" },
         ],
       },
     ]
@@ -39,15 +41,11 @@ const sendShopMenu = async (to, session) => {
   session.state = "SHOP_MENU";
   await session.save();
 
-  await sendButtons(
-    to,
-    "🛍️ *Psychowrld Store*\n\nHow would you like to browse?",
-    [
-      { id: "BROWSE_CATEGORIES", title: "📂 Categories" },
-      { id: "BROWSE_COLLECTIONS", title: "✨ Collections" },
-      { id: "VIEW_CART", title: "🛒 My Cart" },
-    ]
-  );
+  await sendButtons(to, "🛍️ *Psychowrld Store*\n\nHow would you like to browse?", [
+    { id: "BROWSE_CATEGORIES", title: "📂 Categories" },
+    { id: "BROWSE_COLLECTIONS", title: "✨ Collections" },
+    { id: "VIEW_CART", title: "🛒 My Cart" },
+  ]);
 };
 
 // ─── CATEGORIES PAGE 1 ───
@@ -70,11 +68,7 @@ const sendCategories = async (to, session) => {
   }));
 
   if (hasMore) {
-    rows.push({
-      id: "MORE_CATEGORIES",
-      title: "➡️ More Categories",
-      description: "See more",
-    });
+    rows.push({ id: "MORE_CATEGORIES", title: "➡️ More Categories", description: "See more" });
   }
 
   await sendList(to, "📂 Categories", "Select a category:", "View Categories", [
@@ -111,21 +105,15 @@ const sendCollections = async (to, session) => {
   session.state = "BROWSING_CATEGORIES";
   await session.save();
 
-  await sendList(
-    to,
-    "✨ Collections",
-    "Our exclusive collections:",
-    "View Collections",
-    [
-      {
-        title: "Special Collections",
-        rows: [
-          { id: "CAT_WORLD_CUP_COLLECTION_26", title: "🌍 World Cup 26", description: "Nigeria & team jerseys" },
-          { id: "CAT_PSYCHOWRLD_NSFW_COLLECTION", title: "🔞 NSFW Collection", description: "Bold limited pieces" },
-        ],
-      },
-    ]
-  );
+  await sendList(to, "✨ Collections", "Our exclusive collections:", "View Collections", [
+    {
+      title: "Special Collections",
+      rows: [
+        { id: "CAT_WORLD_CUP_COLLECTION_26", title: "🌍 World Cup 26", description: "Nigeria & team jerseys" },
+        { id: "CAT_PSYCHOWRLD_NSFW_COLLECTION", title: "🔞 NSFW Collection", description: "Bold limited pieces" },
+      ],
+    },
+  ]);
 };
 
 // ─── SUBCATEGORIES ───
@@ -144,19 +132,16 @@ const sendSubcategories = async (to, session, categoryName) => {
     return await sendCategories(to, session);
   }
 
-  // Check if any products in this category have images
   const hasImages = await Product.findOne({
     category: categoryName,
     available: true,
     images: { $exists: true, $ne: [] },
   });
 
-  // If products have images, show full category as product list (like Image 1)
   if (hasImages && CATALOG_ID) {
     return await sendCategoryAsProductList(to, session, categoryName);
   }
 
-  // Otherwise fall back to subcategory text list
   if (subcategories.length === 1) {
     return await sendItems(to, session, categoryName, subcategories[0]);
   }
@@ -216,7 +201,6 @@ const sendItems = async (to, session, categoryName, subcategoryName) => {
     return;
   }
 
-  // Fallback to text list if no images synced yet
   const rows = products.map((p) => ({
     id: `ITEM_${p._id}`,
     title: p.name.length > 24 ? p.name.substring(0, 24) : p.name,
@@ -230,7 +214,7 @@ const sendItems = async (to, session, categoryName, subcategoryName) => {
   ]);
 };
 
-// ─── SEND FULL CATEGORY WITH ALL SUBCATEGORIES (like Image 1) ───
+// ─── SEND FULL CATEGORY WITH ALL SUBCATEGORIES ───
 const sendCategoryAsProductList = async (to, session, categoryName) => {
   session.state = "BROWSING_ITEMS";
   session.currentCategory = categoryName;
@@ -266,8 +250,6 @@ const sendCategoryAsProductList = async (to, session, categoryName) => {
     });
   }
 
-  const catId = `CAT_${categoryName.toUpperCase().replace(/\s/g, "_")}`;
-
   if (sections.length > 0 && CATALOG_ID) {
     await sendProductList(
       to,
@@ -283,7 +265,6 @@ const sendCategoryAsProductList = async (to, session, categoryName) => {
       { id: "TALK_AGENT", title: "💬 Talk to Agent" },
     ]);
   } else {
-    // Fallback to subcategory list
     return await sendSubcategories(to, session, categoryName);
   }
 };
@@ -301,7 +282,6 @@ const addToCart = async (to, session, productId) => {
   session.pendingColor = null;
   await session.save();
 
-  // Ask for size first if product has sizes
   if (product.sizes && product.sizes.length > 0 && product.sizes[0] !== "One Size") {
     session.state = "AWAITING_SIZE";
     await session.save();
@@ -311,8 +291,6 @@ const addToCart = async (to, session, productId) => {
       title: s.length > 24 ? s.substring(0, 24) : s,
       description: `Size ${s}`,
     }));
-
-    // Add custom size option
     sizeRows.push({ id: `SIZE_${productId}__CUSTOM`, title: "📝 Custom Size", description: "Enter your own size" });
 
     await sendList(
@@ -325,7 +303,6 @@ const addToCart = async (to, session, productId) => {
     return;
   }
 
-  // No sizes — check for colors
   await askColor(to, session, product, "One Size");
 };
 
@@ -343,7 +320,6 @@ const askColor = async (to, session, product, size) => {
       title: c.length > 24 ? c.substring(0, 24) : c,
       description: `Color: ${c}`,
     }));
-
     colorRows.push({ id: `COLOR_${product._id}__CUSTOM`, title: "📝 Custom Color", description: "Enter your own color" });
 
     await sendList(
@@ -356,10 +332,10 @@ const askColor = async (to, session, product, size) => {
     return;
   }
 
-  // No colors either — add to cart directly
   await doAddToCart(to, session, product, size, "");
 };
 
+// ─── ADD TO CART (supports quantity + native catalog order queue) ───
 const doAddToCart = async (to, session, product, size, color) => {
   const colorLabel = color ? ` / ${color}` : "";
   const cartKey = `${product._id}_${size}_${color || ""}`;
@@ -382,9 +358,9 @@ const doAddToCart = async (to, session, product, size, color) => {
   session.pendingColor = null;
   session.pendingQuantity = null;
 
-  // If processing a native WhatsApp cart order queue, move to next item
   if (session.orderQueue && session.orderQueue.length > 0) {
     session.orderQueue.shift();
+    session.state = "PROCESSING_ORDER_QUEUE";
     await session.save();
     return await processNextInQueue(to, session);
   }
@@ -632,6 +608,32 @@ const processNextInQueue = async (to, session) => {
   await addToCart(to, session, next.productId.toString());
 };
 
+// ─── CUSTOM ORDER ───
+const sendCustomOrderPrompt = async (to, session) => {
+  session.state = "CUSTOM_ORDER_MODE";
+  await session.save();
+
+  await sendText(
+    to,
+    `✍️ *Custom Order*\n\nTell us exactly what you'd like — item type, size, color, and any special design details.\n\nOnce you send it, our team will review and get back to you with pricing and timeline.`
+  );
+};
+
+// ─── WEBSITE LINK ───
+const sendWebsiteLink = async (to, session) => {
+  session.state = "IDLE";
+  await session.save();
+
+  await sendButtons(
+    to,
+    `🌐 *Visit our website:*\n\nhttps://psychowrld.co\n\nBrowse our full collection, lookbooks, and more!`,
+    [
+      { id: "MAIN_SHOP", title: "🛒 Shop Now" },
+      { id: "TALK_AGENT", title: "💬 Talk to Agent" },
+    ]
+  );
+};
+
 module.exports = {
   sendWelcomeMenu,
   sendShopMenu,
@@ -653,4 +655,6 @@ module.exports = {
   sendManufacturingEnquiry,
   sendManufacturingRedirect,
   handleOrderMessage,
+  sendCustomOrderPrompt,
+  sendWebsiteLink,
 };
