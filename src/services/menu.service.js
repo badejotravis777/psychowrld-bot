@@ -122,15 +122,18 @@ const sendSubcategories = async (to, session, categoryName) => {
   session.currentCategory = categoryName;
   await session.save();
 
-  const subcategories = await Product.distinct("subcategory", {
+  const rawSubcategories = await Product.distinct("subcategory", {
     category: categoryName,
     available: true,
   });
 
-  if (subcategories.length === 0) {
+  if (rawSubcategories.length === 0) {
     await sendText(to, `😔 Nothing in ${categoryName} right now.`);
     return await sendCategories(to, session);
   }
+
+  // Products with no subcategory get grouped under "General"
+  const subcategories = [...new Set(rawSubcategories.map((s) => (s && s.trim() ? s : "General")))];
 
   const hasImages = await Product.findOne({
     category: categoryName,
@@ -143,11 +146,12 @@ const sendSubcategories = async (to, session, categoryName) => {
   }
 
   if (subcategories.length === 1) {
-    return await sendItems(to, session, categoryName, subcategories[0]);
+    const subValue = subcategories[0] === "General" ? "" : subcategories[0];
+    return await sendItems(to, session, categoryName, subValue, subcategories[0]);
   }
 
   const rows = subcategories.slice(0, 9).map((sub) => ({
-    id: `SUB_${categoryName.toUpperCase().replace(/\s/g, "_")}__${sub.toUpperCase().replace(/\s/g, "_")}`,
+    id: `SUB_${categoryName.toUpperCase().replace(/\s/g, "_")}__${sub === "General" ? "NONE" : sub.toUpperCase().replace(/\s/g, "_")}`,
     title: sub.length > 24 ? sub.substring(0, 24) : sub,
     description: `View ${sub}`,
   }));
@@ -160,7 +164,8 @@ const sendSubcategories = async (to, session, categoryName) => {
 };
 
 // ─── ITEMS IN SUBCATEGORY ───
-const sendItems = async (to, session, categoryName, subcategoryName) => {
+const sendItems = async (to, session, categoryName, subcategoryName, displayLabel) => {
+  const label = displayLabel || (subcategoryName ? subcategoryName : "General");
   session.state = "BROWSING_ITEMS";
   session.currentCategory = categoryName;
   session.currentSubcategory = subcategoryName;
@@ -168,12 +173,12 @@ const sendItems = async (to, session, categoryName, subcategoryName) => {
 
   const products = await Product.find({
     category: categoryName,
-    subcategory: subcategoryName,
+    subcategory: subcategoryName || "",
     available: true,
   }).limit(30);
 
   if (products.length === 0) {
-    await sendText(to, `😔 No items in ${subcategoryName} right now.`);
+    await sendText(to, `😔 No items in ${label} right now.`);
     return await sendSubcategories(to, session, categoryName);
   }
 
@@ -187,10 +192,10 @@ const sendItems = async (to, session, categoryName, subcategoryName) => {
 
     await sendProductList(
       to,
-      `🛍️ ${subcategoryName}`,
+      `🛍️ ${label}`,
       `Browse items below. Tap a product to view details and add to your cart.`,
       CATALOG_ID,
-      [{ title: subcategoryName, product_items: productItems }]
+      [{ title: label, product_items: productItems }]
     );
 
     await sendButtons(to, "Want to browse more?", [
@@ -209,8 +214,8 @@ const sendItems = async (to, session, categoryName, subcategoryName) => {
 
   rows.push({ id: catId, title: "⬅️ Back", description: "Back to subcategories" });
 
-  await sendList(to, `🛍️ ${subcategoryName}`, "Select an item to add to cart:", "View Items", [
-    { title: subcategoryName, rows },
+  await sendList(to, `🛍️ ${label}`, "Select an item to add to cart:", "View Items", [
+    { title: label, rows },
   ]);
 };
 
@@ -220,35 +225,27 @@ const sendCategoryAsProductList = async (to, session, categoryName) => {
   session.currentCategory = categoryName;
   await session.save();
 
-  const subcategories = await Product.distinct("subcategory", {
+  const products = await Product.find({
     category: categoryName,
     available: true,
   });
 
-  if (subcategories.length === 0) {
+  if (products.length === 0) {
     await sendText(to, `😔 No items in ${categoryName} right now.`);
     return await sendCategories(to, session);
   }
 
-  const sections = [];
+  const sectionsMap = {};
+  products.forEach((p) => {
+    if (!p.images || p.images.length === 0) return;
+    const label = p.subcategory && p.subcategory.trim() ? p.subcategory : "General";
+    if (!sectionsMap[label]) sectionsMap[label] = [];
+    sectionsMap[label].push({ product_retailer_id: p._id.toString() });
+  });
 
-  for (const sub of subcategories) {
-    const products = await Product.find({
-      category: categoryName,
-      subcategory: sub,
-      available: true,
-    }).limit(10);
-
-    const withImages = products.filter((p) => p.images && p.images.length > 0);
-    if (withImages.length === 0) continue;
-
-    sections.push({
-      title: sub,
-      product_items: withImages.map((p) => ({
-        product_retailer_id: p._id.toString(),
-      })),
-    });
-  }
+  const sections = Object.entries(sectionsMap)
+    .slice(0, 10)
+    .map(([title, product_items]) => ({ title, product_items: product_items.slice(0, 10) }));
 
   if (sections.length > 0 && CATALOG_ID) {
     await sendProductList(
