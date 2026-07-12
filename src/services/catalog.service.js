@@ -13,36 +13,49 @@ const syncProductToCatalog = async (product) => {
       return { success: false, reason: "no_image" };
     }
 
-    const payload = {
-      retailer_id: product._id.toString(),
-      name: product.name,
-      description: product.description || product.name,
-      price: product.price * 100,
-      currency: "NGN",
-      availability: product.available ? "in stock" : "out of stock",
-      condition: "new",
-      image_url: product.images[0],
-      url: `https://psychowrld-bot.onrender.com/product/${product._id}`,
-      brand: "Psychowrld",
-      category: product.category,
-      additional_image_urls: product.images.slice(1),
-    };
-
-    // Check if product already exists
+    // Check if product already exists in catalog
     const existingRes = await axios.get(
-      `${BASE_URL}/${CATALOG_ID}/products?filter={"retailer_id":{"eq":"${product._id}"}}`,
+      `${BASE_URL}/${CATALOG_ID}/products?filter={"retailer_id":{"eq":"${product._id}"}}&fields=id,name,image_url,additional_image_urls`,
       { headers: { Authorization: `Bearer ${getToken()}` } }
     );
 
     const existing = existingRes.data?.data?.[0];
 
     if (existing) {
-      await axios.post(`${BASE_URL}/${existing.id}`, payload, {
+      // Product exists — only update name, price, availability
+      // DO NOT touch images to preserve any manually added images in Commerce Manager
+      const updatePayload = {
+        name: product.name,
+        description: product.description || product.name,
+        price: product.price * 100,
+        currency: "NGN",
+        availability: product.available ? "in stock" : "out of stock",
+        url: `https://psychowrld-bot.onrender.com/product/${product._id}`,
+        brand: "Psychowrld",
+      };
+
+      await axios.post(`${BASE_URL}/${existing.id}`, updatePayload, {
         headers: { Authorization: `Bearer ${getToken()}`, "Content-Type": "application/json" },
       });
-      console.log(`✅ Updated catalog: ${product.name}`);
+      console.log(`✅ Updated catalog (preserved images): ${product.name}`);
     } else {
-      await axios.post(`${BASE_URL}/${CATALOG_ID}/products`, payload, {
+      // New product — create with images from our database
+      const createPayload = {
+        retailer_id: product._id.toString(),
+        name: product.name,
+        description: product.description || product.name,
+        price: product.price * 100,
+        currency: "NGN",
+        availability: product.available ? "in stock" : "out of stock",
+        condition: "new",
+        image_url: product.images[0],
+        additional_image_urls: product.images.slice(1),
+        url: `https://psychowrld-bot.onrender.com/product/${product._id}`,
+        brand: "Psychowrld",
+        category: product.category,
+      };
+
+      await axios.post(`${BASE_URL}/${CATALOG_ID}/products`, createPayload, {
         headers: { Authorization: `Bearer ${getToken()}`, "Content-Type": "application/json" },
       });
       console.log(`✅ Added to catalog: ${product.name}`);

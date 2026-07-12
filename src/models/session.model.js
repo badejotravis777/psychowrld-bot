@@ -9,7 +9,7 @@ const cartItemSchema = new mongoose.Schema({
 
 const orderQueueItemSchema = new mongoose.Schema({
   productId: String,
-  quantity: Number,
+  quantity: { type: Number, default: 1 },
 });
 
 const sessionSchema = new mongoose.Schema(

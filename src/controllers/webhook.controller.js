@@ -5,7 +5,7 @@ const {
   sendCollections, sendSubcategories, sendItems, addToCart, doAddToCart, askColor,
   sendCartSummary, sendEditOrder, removeFromCart, askDeliveryAddress,
   confirmOrderWithAddress, trackOrder, sendManufacturingEnquiry, sendManufacturingRedirect,
-  handleOrderMessage, sendCustomOrderPrompt, sendWebsiteLink,
+  handleOrderMessage,
 } = require("../services/menu.service");
 const Session = require("../models/session.model");
 const Product = require("../models/product.model");
@@ -48,8 +48,6 @@ const handleIncomingMessage = async (req, res) => {
       const { type, button_reply, list_reply } = message.interactive;
       if (type === "button_reply") await handleButton(from, button_reply.id, session);
       if (type === "list_reply") await handleListReply(from, list_reply.id, list_reply.title, session);
-    } else if (message.type === "order") {
-      await handleOrderMessage(from, message.order, session);
     }
   } catch (err) {
     console.error("❌ Webhook error:", err);
@@ -60,39 +58,34 @@ const handleIncomingMessage = async (req, res) => {
 const handleText = async (from, text, session) => {
   const lower = text.toLowerCase();
 
+  // Global triggers
   if (["hi", "hello", "start", "hey", "new order"].includes(lower)) return await sendWelcomeMenu(from, session);
   if (["track", "track order", "my order"].includes(lower)) return await trackOrder(from);
   if (["agent", "help", "talk to agent"].includes(lower)) return await escalateToAgent(from, session);
   if (["cart", "my cart", "view cart"].includes(lower)) return await sendCartSummary(from, session);
   if (["shop", "shop now", "browse"].includes(lower)) return await sendShopMenu(from, session);
 
+  // Awaiting address
   if (session.state === "AWAITING_ADDRESS") return await confirmOrderWithAddress(from, session, text);
 
+  // Awaiting custom size
   if (session.state === "AWAITING_CUSTOM_SIZE") {
     const product = await Product.findById(session.pendingProductId);
     if (product) return await askColor(from, session, product, text);
     return await sendWelcomeMenu(from, session);
   }
 
+  // Awaiting custom color
   if (session.state === "AWAITING_CUSTOM_COLOR") {
     const product = await Product.findById(session.pendingProductId);
     if (product) return await doAddToCart(from, session, product, session.pendingSize || "One Size", text);
     return await sendWelcomeMenu(from, session);
   }
 
-  if (session.state === "CUSTOM_ORDER_MODE") {
-    session.state = "IDLE";
-    await session.save();
-    await sendText(from, "✅ Got it! Our team will review your custom order request and get back to you shortly. You can also type *agent* anytime to chat with us directly.");
-    const adminNumber = process.env.ADMIN_WHATSAPP_NUMBER;
-    if (adminNumber) {
-      await sendText(adminNumber, `🔔 *Custom Order Request*\nCustomer: +${from}\nDetails: ${text}`);
-    }
-    return;
-  }
-
+  // Agent mode — don't auto reply
   if (session.agentMode) { console.log(`📨 Agent msg from ${from}: ${text}`); return; }
 
+  // Fallback
   await sendButtons(from, "👋 Not sure what you mean. What would you like to do?", [
     { id: "MAIN_SHOP", title: "🛒 Shop Now" },
     { id: "TRACK_ORDER", title: "📦 Track Order" },
@@ -115,14 +108,14 @@ const handleButton = async (from, id, session) => {
   if (id === "CONFIRM_ORDER") return await askDeliveryAddress(from, session);
   if (id === "MANUFACTURING_ENQUIRY") return await sendManufacturingEnquiry(from, session);
   if (id === "MANUFACTURING_PROCEED") return await sendManufacturingRedirect(from, session);
-  if (id === "CUSTOM_ORDER") return await sendCustomOrderPrompt(from, session);
-  if (id === "VISIT_WEBSITE") return await sendWebsiteLink(from, session);
-  if (id === "CLEAR_CART") return await removeFromCart(from, session, "CLEAR");
+
+  // Category shortcut from button
   if (id.startsWith("CAT_")) {
     const categoryName = await findRealCategoryName(id.replace("CAT_", ""));
     if (categoryName) return await sendSubcategories(from, session, categoryName);
   }
 
+  // Payment
   if (id.startsWith("PAY_")) {
     const orderId = id.replace("PAY_", "");
     return await handlePayment(from, orderId);
@@ -142,15 +135,15 @@ const handleListReply = async (from, id, title, session) => {
   if (id === "TALK_AGENT") return await escalateToAgent(from, session);
   if (id === "MANUFACTURING_ENQUIRY") return await sendManufacturingEnquiry(from, session);
   if (id === "MANUFACTURING_PROCEED") return await sendManufacturingRedirect(from, session);
-  if (id === "CUSTOM_ORDER") return await sendCustomOrderPrompt(from, session);
-  if (id === "VISIT_WEBSITE") return await sendWebsiteLink(from, session);
   if (id === "CLEAR_CART") return await removeFromCart(from, session, "CLEAR");
 
+  // Category selected
   if (id.startsWith("CAT_")) {
     const categoryName = await findRealCategoryName(id.replace("CAT_", ""));
     if (categoryName) return await sendSubcategories(from, session, categoryName);
   }
 
+  // Subcategory selected — format: SUB_CATEGORY__SUBCATEGORY
   if (id.startsWith("SUB_")) {
     const parts = id.replace("SUB_", "").split("__");
     const categoryName = await findRealCategoryName(parts[0]);
@@ -160,11 +153,13 @@ const handleListReply = async (from, id, title, session) => {
     }
   }
 
+  // Item selected
   if (id.startsWith("ITEM_")) {
     const productId = id.replace("ITEM_", "");
     return await addToCart(from, session, productId);
   }
 
+  // Size selected — format: SIZE_productId__size
   if (id.startsWith("SIZE_")) {
     const withoutPrefix = id.replace("SIZE_", "");
     const separatorIndex = withoutPrefix.indexOf("__");
@@ -184,6 +179,7 @@ const handleListReply = async (from, id, title, session) => {
     if (product) return await askColor(from, session, product, size);
   }
 
+  // Color selected — format: COLOR_productId__color
   if (id.startsWith("COLOR_")) {
     const withoutPrefix = id.replace("COLOR_", "");
     const separatorIndex = withoutPrefix.indexOf("__");
@@ -203,6 +199,7 @@ const handleListReply = async (from, id, title, session) => {
     if (product) return await doAddToCart(from, session, product, session.pendingSize || "One Size", color);
   }
 
+  // Remove cart item
   if (id.startsWith("REMOVE_")) {
     const index = id.replace("REMOVE_", "");
     return await removeFromCart(from, session, index);
@@ -211,6 +208,7 @@ const handleListReply = async (from, id, title, session) => {
   await sendWelcomeMenu(from, session);
 };
 
+// Helper — find real category name from uppercased ID
 const findRealCategoryName = async (uppercasedName) => {
   const normalized = uppercasedName.replace(/_/g, " ");
   const product = await Product.findOne({
@@ -220,6 +218,7 @@ const findRealCategoryName = async (uppercasedName) => {
   return product ? product.category : null;
 };
 
+// Helper — find real subcategory name
 const findRealSubcategoryName = async (uppercasedName, categoryName) => {
   const normalized = uppercasedName.replace(/_/g, " ");
   const product = await Product.findOne({
@@ -230,6 +229,7 @@ const findRealSubcategoryName = async (uppercasedName, categoryName) => {
   return product ? product.subcategory : null;
 };
 
+// Escalate to agent
 const escalateToAgent = async (from, session) => {
   session.agentMode = true;
   session.state = "AGENT_MODE";
@@ -243,6 +243,7 @@ const escalateToAgent = async (from, session) => {
   }
 };
 
+// Handle payment
 const handlePayment = async (from, orderId) => {
   const Order = require("../models/order.model");
   const { initializePayment } = require("../services/payment.service");
@@ -252,7 +253,12 @@ const handlePayment = async (from, orderId) => {
 
   await sendText(from, "⏳ Generating your payment link...");
 
-  const payment = await initializePayment(null, order.total, orderId, from);
+  const payment = await initializePayment(
+    null,
+    order.total,
+    orderId,
+    from
+  );
 
   if (payment.success) {
     await sendButtons(
@@ -268,7 +274,10 @@ const handlePayment = async (from, orderId) => {
       ]
     );
   } else {
-    await sendText(from, `❌ Could not generate payment link. Please contact us:\n\nType *agent* to speak with our team.`);
+    await sendText(
+      from,
+      `❌ Could not generate payment link. Please contact us:\n\nType *agent* to speak with our team.`
+    );
   }
 };
 
