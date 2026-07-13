@@ -275,17 +275,18 @@ if (id.startsWith("REMOVE_")) {
 const findRealCategoryName = async (uppercasedName) => {
   const normalized = uppercasedName.replace(/_/g, " ");
   const product = await Product.findOne({
-    category: new RegExp(`^${normalized}$`, "i"),
+    categories: new RegExp(`^${normalized}$`, "i"),
     available: true,
   });
-  return product ? product.category : null;
+  if (!product) return null;
+  return product.categories.find((c) => c.toLowerCase() === normalized.toLowerCase()) || product.categories[0];
 };
 
 const findRealSubcategoryName = async (uppercasedName, categoryName) => {
   if (uppercasedName === "NONE") return ""; // "General" bucket = blank subcategory
   const normalized = uppercasedName.replace(/_/g, " ");
   const product = await Product.findOne({
-    category: categoryName,
+    categories: categoryName,
     subcategory: new RegExp(`^${normalized}$`, "i"),
     available: true,
   });

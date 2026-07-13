@@ -53,9 +53,9 @@ const sendCategories = async (to, session) => {
   session.state = "BROWSING_CATEGORIES";
   await session.save();
 
-  const categories = await Product.distinct("category", {
+  const categories = await Product.distinct("categories", {
     available: true,
-    category: { $nin: ["World Cup Collection 26", "Psychowrld NSFW Collection"] },
+    categories: { $nin: ["World Cup Collection 26", "Psychowrld NSFW Collection"] },
   });
 
   const page1 = categories.slice(0, 9);
@@ -81,9 +81,9 @@ const sendMoreCategories = async (to, session) => {
   session.state = "BROWSING_CATEGORIES";
   await session.save();
 
-  const categories = await Product.distinct("category", {
+  const categories = await Product.distinct("categories", {
     available: true,
-    category: { $nin: ["World Cup Collection 26", "Psychowrld NSFW Collection"] },
+    categories: { $nin: ["World Cup Collection 26", "Psychowrld NSFW Collection"] },
   });
 
   const page2 = categories.slice(9);
@@ -123,7 +123,7 @@ const sendSubcategories = async (to, session, categoryName) => {
   await session.save();
 
   const rawSubcategories = await Product.distinct("subcategory", {
-    category: categoryName,
+    categories: categoryName,
     available: true,
   });
 
@@ -136,7 +136,7 @@ const sendSubcategories = async (to, session, categoryName) => {
   const subcategories = [...new Set(rawSubcategories.map((s) => (s && s.trim() ? s : "General")))];
 
   const hasImages = await Product.findOne({
-    category: categoryName,
+    categories: categoryName,
     available: true,
     images: { $exists: true, $ne: [] },
   });
@@ -172,7 +172,7 @@ const sendItems = async (to, session, categoryName, subcategoryName, displayLabe
   await session.save();
 
   const products = await Product.find({
-    category: categoryName,
+    categories: categoryName,
     subcategory: subcategoryName || "",
     available: true,
   }).limit(30);
@@ -226,7 +226,7 @@ const sendCategoryAsProductList = async (to, session, categoryName) => {
   await session.save();
 
   const products = await Product.find({
-    category: categoryName,
+    categories: categoryName,
     available: true,
   });
 
