@@ -302,9 +302,19 @@ const addToCart = async (to, session, productId) => {
     return;
   }
 
-  await askColor(to, session, product, "One Size");
-};
+  // No preset sizes — still offer the customer a chance to specify one
+  session.state = "OFFER_CUSTOM_SIZE";
+  await session.save();
 
+  await sendButtons(
+    to,
+    `*${product.name}* — ₦${product.price.toLocaleString()}\n\nDo you need a specific size?`,
+    [
+      { id: `OFFERSIZE_${productId}`, title: "📝 Enter Size" },
+      { id: `SKIPSIZE_${productId}`, title: "⏭️ Skip" },
+    ]
+  );
+};
 // ─── ASK COLOR ───
 const askColor = async (to, session, product, size) => {
   session.pendingSize = size;
@@ -331,11 +341,19 @@ const askColor = async (to, session, product, size) => {
     return;
   }
 
-  session.pendingColor = "";
-  await session.save();
-  await askCustomAttributes(to, session, product, size, "", 0);
-};
+ // No preset colors — still offer the customer a chance to specify one
+ session.state = "OFFER_CUSTOM_COLOR";
+ await session.save();
 
+ await sendButtons(
+   to,
+   `*${product.name}* (${size})\n\nDo you need a specific color?`,
+   [
+     { id: `OFFERCOLOR_${product._id}`, title: "📝 Enter Color" },
+     { id: `SKIPCOLOR_${product._id}`, title: "⏭️ Skip" },
+   ]
+ );
+};
 // ─── ASK CUSTOM ATTRIBUTES (e.g. Fan vs Player version) — loops through each defined attribute in order ───
 const askCustomAttributes = async (to, session, product, size, color, attrIndex) => {
   const attrs = product.customAttributes || [];
