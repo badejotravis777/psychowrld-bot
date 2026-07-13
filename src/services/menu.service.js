@@ -370,11 +370,15 @@ const askCustomAttributes = async (to, session, product, size, color, attrIndex)
   session.pendingAttributeIndex = attrIndex;
   await session.save();
 
-  const rows = attr.options.map((opt) => ({
-    id: `ATTR_${product._id}__${attrIndex}__${opt.replace(/\s/g, "_")}`,
-    title: opt.length > 24 ? opt.substring(0, 24) : opt,
-    description: `${attr.name}: ${opt}`,
-  }));
+  const rows = attr.options.map((rawOpt) => {
+    const opt = typeof rawOpt === "string" ? { value: rawOpt, priceAdjustment: 0 } : rawOpt;
+    const priceNote = opt.priceAdjustment ? `+₦${opt.priceAdjustment.toLocaleString()}` : `${attr.name}: ${opt.value}`;
+    return {
+      id: `ATTR_${product._id}__${attrIndex}__${opt.value.replace(/\s/g, "_")}`,
+      title: opt.value.length > 24 ? opt.value.substring(0, 24) : opt.value,
+      description: priceNote,
+    };
+  });
 
   await sendList(
     to,
@@ -390,6 +394,24 @@ const doAddToCart = async (to, session, product, size, color) => {
   const colorLabel = color ? ` / ${color}` : "";
   const attrValues = session.pendingAttributes ? Object.values(session.pendingAttributes) : [];
   const attrLabel = attrValues.length > 0 ? ` / ${attrValues.join(" / ")}` : "";
+
+  // Add up any price adjustments from selected custom attributes (e.g. Player version = +₦10,000)
+  let attrPriceAdjustment = 0;
+  if (product.customAttributes && session.pendingAttributes) {
+    for (const attr of product.customAttributes) {
+      const selectedValue = session.pendingAttributes[attr.name];
+      if (!selectedValue) continue;
+      const match = attr.options.find((rawOpt) => {
+        const opt = typeof rawOpt === "string" ? { value: rawOpt } : rawOpt;
+        return opt.value === selectedValue;
+      });
+      if (match && typeof match !== "string" && match.priceAdjustment) {
+        attrPriceAdjustment += match.priceAdjustment;
+      }
+    }
+  }
+
+  const finalPrice = product.price + attrPriceAdjustment;
   const cartKey = `${product._id}_${size}_${color || ""}_${JSON.stringify(session.pendingAttributes || {})}`;
   const quantity = session.pendingQuantity || 1;
   const existing = session.cart.find((i) => i.productId === cartKey);
@@ -400,7 +422,7 @@ const doAddToCart = async (to, session, product, size, color) => {
     session.cart.push({
       productId: cartKey,
       name: `${product.name} (${size}${colorLabel}${attrLabel})`,
-      price: product.price,
+      price: finalPrice,
       quantity,
     });
   }
@@ -426,7 +448,7 @@ const doAddToCart = async (to, session, product, size, color) => {
 
   await sendButtons(
     to,
-    `✅ *${product.name} (${size}${colorLabel})* added to cart!\n\n🛒 ${session.cart.length} item(s) in cart`,
+    `✅ *${product.name} (${size}${colorLabel}${attrLabel})* added to cart!\n\n💰 ₦${finalPrice.toLocaleString()}\n🛒 ${session.cart.length} item(s) in cart`,
     [
       { id: "VIEW_CART", title: "🛒 View Cart" },
       { id: catId, title: "➕ Add More" },
@@ -434,7 +456,6 @@ const doAddToCart = async (to, session, product, size, color) => {
     ]
   );
 };
-
 // ─── CART SUMMARY ───
 const sendCartSummary = async (to, session) => {
   if (!session.cart || session.cart.length === 0) {
