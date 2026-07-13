@@ -8,6 +8,7 @@ const productSchema = new mongoose.Schema(
     categories: { type: [String], required: true, default: [] },
     subcategory: { type: String, default: "" },
     available: { type: Boolean, default: true },
+    badge: { type: String, enum: ["none", "coming_soon", "restocked"], default: "none" },
     emoji: { type: String, default: "🛍️" },
     sizes: { type: [String], default: [] },
     colors: { type: [String], default: [] },
@@ -37,10 +38,11 @@ const productSchema = new mongoose.Schema(
       ],
       default: [],
     },
-    images: { type: [String], default: [] },
+    images: { type: [String], default: [] },        // multiple image URLs
+    imagePublicIds: { type: [String], default: [] }, // multiple cloudinary IDs
+    // Keep single for backward compat
     imageUrl: { type: String, default: "" },
     imagePublicId: { type: String, default: "" },
-    imagePublicIds: { type: [String], default: [] },
   },
   { timestamps: true }
 );

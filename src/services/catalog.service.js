@@ -5,6 +5,11 @@ const BASE_URL = `https://graph.facebook.com/v19.0`;
 
 const getToken = () => process.env.META_ACCESS_TOKEN;
 
+const BADGE_LABELS = { coming_soon: "🔜 Coming Soon", restocked: "🎉 Restocked" };
+function getBadgeLabel(product) {
+  return BADGE_LABELS[product.badge] || "";
+}
+
 // Push a single product to Meta catalog
 const syncProductToCatalog = async (product) => {
   try {
@@ -12,6 +17,9 @@ const syncProductToCatalog = async (product) => {
       console.log(`⚠️ Skipping catalog sync for ${product.name} — no image`);
       return { success: false, reason: "no_image" };
     }
+
+    const badgeLabel = getBadgeLabel(product);
+    const displayName = badgeLabel ? `${badgeLabel} — ${product.name}` : product.name;
 
     // Check if product already exists in catalog
     const existingRes = await axios.get(
@@ -25,7 +33,7 @@ const syncProductToCatalog = async (product) => {
       // Product exists — only update name, price, availability
       // DO NOT touch images to preserve any manually added images in Commerce Manager
       const updatePayload = {
-        name: product.name,
+        name: displayName,
         description: product.description || product.name,
         price: product.price * 100,
         currency: "NGN",
@@ -37,12 +45,12 @@ const syncProductToCatalog = async (product) => {
       await axios.post(`${BASE_URL}/${existing.id}`, updatePayload, {
         headers: { Authorization: `Bearer ${getToken()}`, "Content-Type": "application/json" },
       });
-      console.log(`✅ Updated catalog (preserved images): ${product.name}`);
+      console.log(`✅ Updated catalog (preserved images): ${displayName}`);
     } else {
       // New product — create with images from our database
       const createPayload = {
         retailer_id: product._id.toString(),
-        name: product.name,
+        name: displayName,
         description: product.description || product.name,
         price: product.price * 100,
         currency: "NGN",
@@ -58,7 +66,7 @@ const syncProductToCatalog = async (product) => {
       await axios.post(`${BASE_URL}/${CATALOG_ID}/products`, createPayload, {
         headers: { Authorization: `Bearer ${getToken()}`, "Content-Type": "application/json" },
       });
-      console.log(`✅ Added to catalog: ${product.name}`);
+      console.log(`✅ Added to catalog: ${displayName}`);
     }
 
     return { success: true };

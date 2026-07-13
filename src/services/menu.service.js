@@ -17,6 +17,11 @@ function getSubcategoryForCategory(product, category) {
   return product.subcategory || "";
 }
 
+const BADGE_LABELS = { coming_soon: "🔜 Coming Soon", restocked: "🎉 Restocked" };
+function getBadgeLabel(product) {
+  return BADGE_LABELS[product.badge] || "";
+}
+
 // ─── WELCOME MENU ───
 const sendWelcomeMenu = async (to, session) => {
   session.state = "IDLE";
@@ -218,11 +223,15 @@ const sendItems = async (to, session, categoryName, subcategoryName, displayLabe
     return;
   }
 
-  const rows = products.map((p) => ({
-    id: `ITEM_${p._id}`,
-    title: p.name.length > 24 ? p.name.substring(0, 24) : p.name,
-    description: `₦${p.price.toLocaleString()} • Sizes: ${p.sizes.join(", ")}`,
-  }));
+  const rows = products.map((p) => {
+    const badgeLabel = getBadgeLabel(p);
+    const rawTitle = badgeLabel ? `${badgeLabel} ${p.name}` : p.name;
+    return {
+      id: `ITEM_${p._id}`,
+      title: rawTitle.length > 24 ? rawTitle.substring(0, 24) : rawTitle,
+      description: `₦${p.price.toLocaleString()} • Sizes: ${p.sizes.join(", ")}`,
+    };
+  });
 
   rows.push({ id: catId, title: "⬅️ Back", description: "Back to subcategories" });
 
