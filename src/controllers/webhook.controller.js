@@ -282,15 +282,29 @@ const findRealCategoryName = async (uppercasedName) => {
   return product.categories.find((c) => c.toLowerCase() === normalized.toLowerCase()) || product.categories[0];
 };
 
+const getSubcategoryForCategory = (product, category) => {
+  if (product.categorySubcategories && product.categorySubcategories.length > 0) {
+    const match = product.categorySubcategories.find((cs) => cs.category === category);
+    if (match) return match.subcategory || "";
+  }
+  return product.subcategory || "";
+};
+
 const findRealSubcategoryName = async (uppercasedName, categoryName) => {
-  if (uppercasedName === "NONE") return ""; // "General" bucket = blank subcategory
-  const normalized = uppercasedName.replace(/_/g, " ");
-  const product = await Product.findOne({
+  if (uppercasedName === "NONE") return "";
+  const normalized = uppercasedName.replace(/_/g, " ").toLowerCase();
+
+  const productsInCategory = await Product.find({
     categories: categoryName,
-    subcategory: new RegExp(`^${normalized}$`, "i"),
     available: true,
   });
-  return product ? product.subcategory : null;
+
+  for (const p of productsInCategory) {
+    const sub = getSubcategoryForCategory(p, categoryName);
+    if (sub && sub.toLowerCase() === normalized) return sub;
+  }
+
+  return null;
 };
 
 const escalateToAgent = async (from, session) => {

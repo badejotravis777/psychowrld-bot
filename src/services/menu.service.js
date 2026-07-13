@@ -8,6 +8,15 @@ const PACKAGING_FEE = 500;
 const CEO_WHATSAPP = "2349049172767";
 const CATALOG_ID = process.env.CATALOG_ID;
 
+// Get the subcategory that applies to a product for a specific category
+function getSubcategoryForCategory(product, category) {
+  if (product.categorySubcategories && product.categorySubcategories.length > 0) {
+    const match = product.categorySubcategories.find((cs) => cs.category === category);
+    if (match) return match.subcategory || "";
+  }
+  return product.subcategory || "";
+}
+
 // ─── WELCOME MENU ───
 const sendWelcomeMenu = async (to, session) => {
   session.state = "IDLE";
@@ -122,24 +131,24 @@ const sendSubcategories = async (to, session, categoryName) => {
   session.currentCategory = categoryName;
   await session.save();
 
-  const rawSubcategories = await Product.distinct("subcategory", {
+  const productsInCategory = await Product.find({
     categories: categoryName,
     available: true,
   });
 
-  if (rawSubcategories.length === 0) {
+  if (productsInCategory.length === 0) {
     await sendText(to, `😔 Nothing in ${categoryName} right now.`);
     return await sendCategories(to, session);
   }
 
-  // Products with no subcategory get grouped under "General"
-  const subcategories = [...new Set(rawSubcategories.map((s) => (s && s.trim() ? s : "General")))];
+  const subcategories = [...new Set(
+    productsInCategory.map((p) => {
+      const sub = getSubcategoryForCategory(p, categoryName);
+      return sub && sub.trim() ? sub : "General";
+    })
+  )];
 
-  const hasImages = await Product.findOne({
-    categories: categoryName,
-    available: true,
-    images: { $exists: true, $ne: [] },
-  });
+  const hasImages = productsInCategory.some((p) => p.images && p.images.length > 0);
 
   if (hasImages && CATALOG_ID) {
     return await sendCategoryAsProductList(to, session, categoryName);
@@ -171,11 +180,14 @@ const sendItems = async (to, session, categoryName, subcategoryName, displayLabe
   session.currentSubcategory = subcategoryName;
   await session.save();
 
-  const products = await Product.find({
+  const allInCategory = await Product.find({
     categories: categoryName,
-    subcategory: subcategoryName || "",
     available: true,
-  }).limit(30);
+  });
+
+  const products = allInCategory
+    .filter((p) => getSubcategoryForCategory(p, categoryName) === (subcategoryName || ""))
+    .slice(0, 30);
 
   if (products.length === 0) {
     await sendText(to, `😔 No items in ${label} right now.`);
@@ -238,7 +250,8 @@ const sendCategoryAsProductList = async (to, session, categoryName) => {
   const sectionsMap = {};
   products.forEach((p) => {
     if (!p.images || p.images.length === 0) return;
-    const label = p.subcategory && p.subcategory.trim() ? p.subcategory : "General";
+    const sub = getSubcategoryForCategory(p, categoryName);
+    const label = sub && sub.trim() ? sub : "General";
     if (!sectionsMap[label]) sectionsMap[label] = [];
     sectionsMap[label].push({ product_retailer_id: p._id.toString() });
   });
