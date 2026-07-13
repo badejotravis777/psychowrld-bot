@@ -277,6 +277,8 @@ const addToCart = async (to, session, productId) => {
   session.pendingProductId = productId.toString();
   session.pendingSize = null;
   session.pendingColor = null;
+  session.pendingAttributes = {};
+  session.pendingAttributeIndex = 0;
   await session.save();
 
   if (product.sizes && product.sizes.length > 0 && product.sizes[0] !== "One Size") {
@@ -329,13 +331,48 @@ const askColor = async (to, session, product, size) => {
     return;
   }
 
-  await doAddToCart(to, session, product, size, "");
+  session.pendingColor = "";
+  await session.save();
+  await askCustomAttributes(to, session, product, size, "", 0);
+};
+
+// ─── ASK CUSTOM ATTRIBUTES (e.g. Fan vs Player version) — loops through each defined attribute in order ───
+const askCustomAttributes = async (to, session, product, size, color, attrIndex) => {
+  const attrs = product.customAttributes || [];
+
+  if (attrIndex >= attrs.length) {
+    return await doAddToCart(to, session, product, size, color);
+  }
+
+  const attr = attrs[attrIndex];
+  session.state = "AWAITING_CUSTOM_ATTRIBUTE";
+  session.pendingProductId = product._id.toString();
+  session.pendingSize = size;
+  session.pendingColor = color;
+  session.pendingAttributeIndex = attrIndex;
+  await session.save();
+
+  const rows = attr.options.map((opt) => ({
+    id: `ATTR_${product._id}__${attrIndex}__${opt.replace(/\s/g, "_")}`,
+    title: opt.length > 24 ? opt.substring(0, 24) : opt,
+    description: `${attr.name}: ${opt}`,
+  }));
+
+  await sendList(
+    to,
+    `⚙️ Select ${attr.name}`,
+    `*${product.name}*\n\nChoose your ${attr.name}:`,
+    `Select ${attr.name}`,
+    [{ title: attr.name, rows }]
+  );
 };
 
 // ─── ADD TO CART (supports quantity + native catalog order queue) ───
 const doAddToCart = async (to, session, product, size, color) => {
   const colorLabel = color ? ` / ${color}` : "";
-  const cartKey = `${product._id}_${size}_${color || ""}`;
+  const attrValues = session.pendingAttributes ? Object.values(session.pendingAttributes) : [];
+  const attrLabel = attrValues.length > 0 ? ` / ${attrValues.join(" / ")}` : "";
+  const cartKey = `${product._id}_${size}_${color || ""}_${JSON.stringify(session.pendingAttributes || {})}`;
   const quantity = session.pendingQuantity || 1;
   const existing = session.cart.find((i) => i.productId === cartKey);
 
@@ -344,7 +381,7 @@ const doAddToCart = async (to, session, product, size, color) => {
   } else {
     session.cart.push({
       productId: cartKey,
-      name: `${product.name} (${size}${colorLabel})`,
+      name: `${product.name} (${size}${colorLabel}${attrLabel})`,
       price: product.price,
       quantity,
     });
@@ -354,6 +391,8 @@ const doAddToCart = async (to, session, product, size, color) => {
   session.pendingSize = null;
   session.pendingColor = null;
   session.pendingQuantity = null;
+  session.pendingAttributes = {};
+  session.pendingAttributeIndex = 0;
 
   if (session.orderQueue && session.orderQueue.length > 0) {
     session.orderQueue.shift();
@@ -632,6 +671,7 @@ const sendWebsiteLink = async (to, session) => {
 };
 
 module.exports = {
+  askCustomAttributes,
   sendWelcomeMenu,
   sendShopMenu,
   sendCategories,

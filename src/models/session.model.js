@@ -23,6 +23,8 @@ const sessionSchema = new mongoose.Schema(
     pendingSize: { type: String, default: null },
     pendingColor: { type: String, default: null },
     pendingQuantity: { type: Number, default: null },
+    pendingAttributes: { type: mongoose.Schema.Types.Mixed, default: {} },
+    pendingAttributeIndex: { type: Number, default: 0 },
     orderQueue: [orderQueueItemSchema],
     deliveryAddress: { type: String, default: null },
     agentMode: { type: Boolean, default: false },
