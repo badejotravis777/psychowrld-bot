@@ -3,6 +3,7 @@ const { sendText, sendButtons } = require("../services/whatsapp.service");
 const {
   sendWelcomeMenu, sendShopMenu, sendCategories, sendMoreCategories,
   sendCollections, sendSubcategories, sendItems, addToCart, doAddToCart, askColor,
+  askCustomAttributes,
   sendCartSummary, sendEditOrder, removeFromCart, askDeliveryAddress,
   confirmOrderWithAddress, trackOrder, sendManufacturingEnquiry, sendManufacturingRedirect,
   handleOrderMessage, sendCustomOrderPrompt, sendWebsiteLink,
@@ -73,7 +74,11 @@ const handleText = async (from, text, session) => {
 
   if (session.state === "AWAITING_CUSTOM_COLOR") {
     const product = await Product.findById(session.pendingProductId);
-    if (product) return await doAddToCart(from, session, product, session.pendingSize || "One Size", text);
+    if (product) {
+      session.pendingColor = text;
+      await session.save();
+      return await askCustomAttributes(from, session, product, session.pendingSize || "One Size", text, 0);
+    }
     return await sendWelcomeMenu(from, session);
   }
 
@@ -124,6 +129,38 @@ const handleButton = async (from, id, session) => {
     return await handlePayment(from, orderId);
   }
 
+  if (id.startsWith("OFFERSIZE_")) {
+    const productId = id.replace("OFFERSIZE_", "");
+    session.state = "AWAITING_CUSTOM_SIZE";
+    session.pendingProductId = productId;
+    await session.save();
+    await sendText(from, "📝 Please type your size (e.g. *32 waist*, *UK 12*, *M*):");
+    return;
+  }
+
+  if (id.startsWith("SKIPSIZE_")) {
+    const productId = id.replace("SKIPSIZE_", "");
+    const product = await Product.findById(productId);
+    if (product) return await askColor(from, session, product, "One Size");
+    return await sendWelcomeMenu(from, session);
+  }
+
+  if (id.startsWith("OFFERCOLOR_")) {
+    const productId = id.replace("OFFERCOLOR_", "");
+    session.state = "AWAITING_CUSTOM_COLOR";
+    session.pendingProductId = productId;
+    await session.save();
+    await sendText(from, "📝 Please type your color (e.g. *Navy Blue*, *Forest Green*):");
+    return;
+  }
+
+  if (id.startsWith("SKIPCOLOR_")) {
+    const productId = id.replace("SKIPCOLOR_", "");
+    const product = await Product.findById(productId);
+    if (product) return await askCustomAttributes(from, session, product, session.pendingSize || "One Size", "", 0);
+    return await sendWelcomeMenu(from, session);
+  }
+
   await sendWelcomeMenu(from, session);
 };
 
@@ -150,8 +187,9 @@ const handleListReply = async (from, id, title, session) => {
     const parts = id.replace("SUB_", "").split("__");
     const categoryName = await findRealCategoryName(parts[0]);
     const subcategoryName = await findRealSubcategoryName(parts[1], categoryName);
-    if (categoryName && subcategoryName) {
-      return await sendItems(from, session, categoryName, subcategoryName);
+    if (categoryName && subcategoryName !== null) {
+      const displayLabel = parts[1] === "NONE" ? "General" : subcategoryName;
+      return await sendItems(from, session, categoryName, subcategoryName, displayLabel);
     }
   }
 
@@ -195,10 +233,38 @@ const handleListReply = async (from, id, title, session) => {
 
     const color = colorRaw.replace(/_/g, " ");
     const product = await Product.findById(productId);
-    if (product) return await doAddToCart(from, session, product, session.pendingSize || "One Size", color);
+    if (product) {
+      session.pendingColor = color;
+      await session.save();
+      return await askCustomAttributes(from, session, product, session.pendingSize || "One Size", color, 0);
+    }
   }
+// Custom attribute selected — format: ATTR_productId__attrIndex__value
+if (id.startsWith("ATTR_")) {
+  const withoutPrefix = id.replace("ATTR_", "");
+  const firstSep = withoutPrefix.indexOf("__");
+  const productId = withoutPrefix.substring(0, firstSep);
+  const rest = withoutPrefix.substring(firstSep + 2);
+  const secondSep = rest.indexOf("__");
+  const attrIndex = parseInt(rest.substring(0, secondSep));
+  const value = rest.substring(secondSep + 2).replace(/_/g, " ");
 
-  if (id.startsWith("REMOVE_")) {
+  const product = await Product.findById(productId);
+  if (!product) return await sendWelcomeMenu(from, session);
+
+  const attr = product.customAttributes?.[attrIndex];
+  if (!attr) return await sendWelcomeMenu(from, session);
+
+  if (!session.pendingAttributes) session.pendingAttributes = {};
+  session.pendingAttributes[attr.name] = value;
+  session.markModified("pendingAttributes");
+  await session.save();
+
+  return await askCustomAttributes(from, session, product, session.pendingSize || "One Size", session.pendingColor || "", attrIndex + 1);
+}
+
+// Remove cart item
+if (id.startsWith("REMOVE_")) {
     const index = id.replace("REMOVE_", "");
     return await removeFromCart(from, session, index);
   }
@@ -216,6 +282,7 @@ const findRealCategoryName = async (uppercasedName) => {
 };
 
 const findRealSubcategoryName = async (uppercasedName, categoryName) => {
+  if (uppercasedName === "NONE") return ""; // "General" bucket = blank subcategory
   const normalized = uppercasedName.replace(/_/g, " ");
   const product = await Product.findOne({
     category: categoryName,
