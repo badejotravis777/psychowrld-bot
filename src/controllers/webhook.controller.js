@@ -3,7 +3,7 @@ const { sendText, sendButtons } = require("../services/whatsapp.service");
 const {
   sendWelcomeMenu, sendShopMenu, sendCategories, sendMoreCategories,
   sendCollections, sendSubcategories, sendItems, addToCart, doAddToCart, askColor,
-  askCustomAttributes,
+  askCustomAttributes, sendAllProducts,
   sendCartSummary, sendEditOrder, removeFromCart, askDeliveryAddress,
   confirmOrderWithAddress, trackOrder, sendManufacturingEnquiry, sendManufacturingRedirect,
   handleOrderMessage, sendCustomOrderPrompt, sendWebsiteLink,
@@ -117,7 +117,8 @@ const handleButton = async (from, id, session) => {
   console.log(`🔘 Button: ${id}`);
 
   if (id === "MAIN_SHOP") return await sendShopMenu(from, session);
-  if (id === "BROWSE_CATEGORIES") return await sendCategories(from, session);
+  if (id === "BROWSE_COLLECTIONS") return await sendCollections(from, session);
+  if (id === "ALL_PRODUCTS") return await sendAllProducts(from, session);
   if (id === "MORE_CATEGORIES") return await sendMoreCategories(from, session);
   if (id === "BROWSE_COLLECTIONS") return await sendCollections(from, session);
   if (id === "VIEW_CART") return await sendCartSummary(from, session);
@@ -133,6 +134,11 @@ const handleButton = async (from, id, session) => {
   if (id.startsWith("CAT_")) {
     const categoryName = await findRealCategoryName(id.replace("CAT_", ""));
     if (categoryName) return await sendSubcategories(from, session, categoryName);
+  }
+
+  if (id.startsWith("ALLPRODUCTS_PAGE_")) {
+    const page = parseInt(id.replace("ALLPRODUCTS_PAGE_", ""));
+    return await sendAllProducts(from, session, page);
   }
 
   if (id.startsWith("PAY_")) {
@@ -198,6 +204,12 @@ const handleListReply = async (from, id, title, session) => {
   if (id === "CUSTOM_ORDER") return await sendCustomOrderPrompt(from, session);
   if (id === "VISIT_WEBSITE") return await sendWebsiteLink(from, session);
   if (id === "CLEAR_CART") return await removeFromCart(from, session, "CLEAR");
+  if (id === "ALL_PRODUCTS") return await sendAllProducts(from, session);
+
+  if (id.startsWith("ALLPRODUCTS_PAGE_")) {
+    const page = parseInt(id.replace("ALLPRODUCTS_PAGE_", ""));
+    return await sendAllProducts(from, session, page);
+  }
 
   if (id.startsWith("CAT_")) {
     const categoryName = await findRealCategoryName(id.replace("CAT_", ""));

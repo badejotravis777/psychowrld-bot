@@ -39,6 +39,7 @@ const sendWelcomeMenu = async (to, session) => {
         title: "Main Menu",
         rows: [
           { id: "MAIN_SHOP", title: "🛍️ Visit Psychowrld Store", description: "Browse our full catalog" },
+          { id: "ALL_PRODUCTS", title: "🗂️ All Products", description: "See every item we have" },
           { id: "CUSTOM_ORDER", title: "✍️ Custom Order", description: "Tell us what you need" },
           { id: "MANUFACTURING_ENQUIRY", title: "📅 Manufacturing", description: "Book an appointment" },
           { id: "TRACK_ORDER", title: "📦 Track My Order", description: "Check your order status" },
@@ -119,14 +120,24 @@ const sendCollections = async (to, session) => {
   session.state = "BROWSING_CATEGORIES";
   await session.save();
 
+  const collectionDefs = [
+    { id: "CAT_WORLD_CUP_COLLECTION_26", title: "🌍 World Cup 26", description: "Nigeria & team jerseys", categoryName: "World Cup Collection 26" },
+    { id: "CAT_PSYCHOWRLD_NSFW_COLLECTION", title: "🔞 NSFW Collection", description: "Bold limited pieces", categoryName: "Psychowrld NSFW Collection" },
+  ];
+
+  const availableRows = [];
+  for (const def of collectionDefs) {
+    const exists = await Product.findOne({ categories: def.categoryName, available: true });
+    if (exists) availableRows.push({ id: def.id, title: def.title, description: def.description });
+  }
+
+  if (availableRows.length === 0) {
+    await sendText(to, "😔 No special collections are live right now — check back soon!");
+    return await sendShopMenu(to, session);
+  }
+
   await sendList(to, "✨ Collections", "Our exclusive collections:", "View Collections", [
-    {
-      title: "Special Collections",
-      rows: [
-        { id: "CAT_WORLD_CUP_COLLECTION_26", title: "🌍 World Cup 26", description: "Nigeria & team jerseys" },
-        { id: "CAT_PSYCHOWRLD_NSFW_COLLECTION", title: "🔞 NSFW Collection", description: "Bold limited pieces" },
-      ],
-    },
+    { title: "Special Collections", rows: availableRows },
   ]);
 };
 
@@ -286,6 +297,74 @@ const sendCategoryAsProductList = async (to, session, categoryName) => {
   } else {
     return await sendSubcategories(to, session, categoryName);
   }
+};
+
+// ─── SEND ALL PRODUCTS ACROSS EVERY CATEGORY, PAGINATED ───
+const sendAllProducts = async (to, session, page = 0) => {
+  session.state = "BROWSING_ITEMS";
+  await session.save();
+
+  const allAvailable = await Product.find({ available: true }).sort({ categories: 1, name: 1 });
+
+  if (allAvailable.length === 0) {
+    await sendText(to, "😔 No products available right now.");
+    return await sendShopMenu(to, session);
+  }
+
+  const withImages = allAvailable.filter((p) => p.images && p.images.length > 0);
+
+  // Fallback to a plain text list if nothing has synced images yet
+  if (withImages.length === 0 || !CATALOG_ID) {
+    const pageSize = 9;
+    const pageItems = allAvailable.slice(page * pageSize, page * pageSize + pageSize);
+    const hasMore = allAvailable.length > (page + 1) * pageSize;
+
+    const rows = pageItems.map((p) => ({
+      id: `ITEM_${p._id}`,
+      title: p.name.length > 24 ? p.name.substring(0, 24) : p.name,
+      description: `₦${p.price.toLocaleString()} • ${(p.categories || []).join(", ")}`,
+    }));
+
+    if (hasMore) {
+      rows.push({ id: `ALLPRODUCTS_PAGE_${page + 1}`, title: "➡️ More Products", description: "See more" });
+    }
+    rows.push({ id: "MAIN_SHOP", title: "⬅️ Back", description: "Back to menu" });
+
+    return await sendList(to, "🛍️ All Products", "Browse everything we have:", "View Products", [
+      { title: "All Products", rows },
+    ]);
+  }
+
+  // Meta caps multi-product messages at 30 items total — paginate if the store has more
+  const pageSize = 30;
+  const pageProducts = withImages.slice(page * pageSize, page * pageSize + pageSize);
+  const hasMore = withImages.length > (page + 1) * pageSize;
+
+  const sectionsMap = {};
+  pageProducts.forEach((p) => {
+    const primaryCategory = (p.categories && p.categories[0]) || "Other";
+    if (!sectionsMap[primaryCategory]) sectionsMap[primaryCategory] = [];
+    sectionsMap[primaryCategory].push({ product_retailer_id: p._id.toString() });
+  });
+
+  const sections = Object.entries(sectionsMap)
+    .slice(0, 10)
+    .map(([title, product_items]) => ({ title, product_items }));
+
+  await sendProductList(
+    to,
+    "🛍️ All Products",
+    "Browse everything we have. Tap any product to view details and add to your cart.",
+    CATALOG_ID,
+    sections
+  );
+
+  const buttons = [];
+  if (hasMore) buttons.push({ id: `ALLPRODUCTS_PAGE_${page + 1}`, title: "➡️ More Products" });
+  buttons.push({ id: "BROWSE_CATEGORIES", title: "📂 Categories" });
+  buttons.push({ id: "VIEW_CART", title: "🛒 My Cart" });
+
+  await sendButtons(to, "Need anything else?", buttons.slice(0, 3));
 };
 
 // ─── ADD TO CART ───
@@ -741,6 +820,7 @@ const sendWebsiteLink = async (to, session) => {
 
 module.exports = {
   askCustomAttributes,
+  sendAllProducts,
   sendWelcomeMenu,
   sendShopMenu,
   sendCategories,
