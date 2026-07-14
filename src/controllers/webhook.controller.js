@@ -66,9 +66,14 @@ const handleText = async (from, text, session) => {
 
   if (session.state === "AWAITING_ADDRESS") return await confirmOrderWithAddress(from, session, text);
 
+  
   if (session.state === "AWAITING_CUSTOM_SIZE") {
     const product = await Product.findById(session.pendingProductId);
-    if (product) return await askColor(from, session, product, text);
+    if (product) {
+      session.state = "PROCESSING_ORDER_QUEUE";
+      await session.save();
+      return await askColor(from, session, product, text);
+    }
     return await sendWelcomeMenu(from, session);
   }
 
@@ -76,6 +81,7 @@ const handleText = async (from, text, session) => {
     const product = await Product.findById(session.pendingProductId);
     if (product) {
       session.pendingColor = text;
+      session.state = "PROCESSING_ORDER_QUEUE"; // reset so next text won't re-enter this block
       await session.save();
       return await askCustomAttributes(from, session, product, session.pendingSize || "One Size", text, 0);
     }
@@ -157,7 +163,11 @@ const handleButton = async (from, id, session) => {
   if (id.startsWith("SKIPCOLOR_")) {
     const productId = id.replace("SKIPCOLOR_", "");
     const product = await Product.findById(productId);
-    if (product) return await askCustomAttributes(from, session, product, session.pendingSize || "One Size", "", 0);
+    if (product) {
+      session.pendingProductId = productId;
+      await session.save();
+      return await askCustomAttributes(from, session, product, session.pendingSize || "One Size", "", 0);
+    }
     return await sendWelcomeMenu(from, session);
   }
 
