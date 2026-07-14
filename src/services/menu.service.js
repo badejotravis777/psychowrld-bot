@@ -669,17 +669,25 @@ const handleOrderMessage = async (to, order, session) => {
     return;
   }
 
-  session.orderQueue = items.map((i) => ({
-    productId: i.product_retailer_id,
-    quantity: parseInt(i.quantity) || 1,
-  }));
+  // Expand each item by quantity so we ask size/color per unit
+  // e.g. 2x Hoodie → two separate queue entries, each asked independently
+  const expandedQueue = [];
+  for (const i of items) {
+    const qty = parseInt(i.quantity) || 1;
+    for (let u = 0; u < qty; u++) {
+      expandedQueue.push({ productId: i.product_retailer_id, quantity: 1 });
+    }
+  }
+
+  session.orderQueue = expandedQueue;
   session.cart = [];
   session.state = "PROCESSING_ORDER_QUEUE";
   await session.save();
 
+  const totalUnits = expandedQueue.length;
   await sendText(
     to,
-    `🛒 Got your cart with ${items.length} item(s)!\n\nLet's confirm sizes and colors for each.`
+    `🛒 Got your cart with ${totalUnits} item${totalUnits > 1 ? "s" : ""}!\n\nI'll ask for size and color for each one — even if they're the same product, each unit can have different details.`
   );
   await processNextInQueue(to, session);
 };
@@ -700,7 +708,7 @@ const processNextInQueue = async (to, session) => {
     return await processNextInQueue(to, session);
   }
 
-  session.pendingQuantity = next.quantity;
+  session.pendingQuantity = 1;
   await session.save();
   await addToCart(to, session, next.productId.toString());
 };
