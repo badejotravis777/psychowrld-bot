@@ -2,7 +2,7 @@ const { VERIFY_TOKEN } = require("../config/whatsapp.config");
 const { sendText, sendButtons } = require("../services/whatsapp.service");
 const {
   sendWelcomeMenu, sendShopMenu, sendCategories, sendMoreCategories,
-  sendCollections, sendSubcategories, sendItems, addToCart, doAddToCart, askColor,
+  sendCollections, sendMoreCollections, sendCollectionProducts, sendSubcategories, sendItems, addToCart, doAddToCart, askColor,
   askCustomAttributes, sendAllProducts,
   sendCartSummary, sendEditOrder, removeFromCart, askDeliveryAddress,
   confirmOrderWithAddress, trackOrder, sendManufacturingEnquiry, sendManufacturingRedirect,
@@ -141,6 +141,13 @@ const handleButton = async (from, id, session) => {
     return await sendAllProducts(from, session, page);
   }
 
+  if (id.startsWith("COLLECTION_")) {
+    const collectionName = await findRealCollectionName(id.replace("COLLECTION_", ""));
+    if (collectionName) return await sendCollectionProducts(from, session, collectionName);
+  }
+
+  if (id === "MORE_COLLECTIONS") return await sendMoreCollections(from, session);
+
   if (id.startsWith("PAY_")) {
     const orderId = id.replace("PAY_", "");
     return await handlePayment(from, orderId);
@@ -209,6 +216,13 @@ const handleListReply = async (from, id, title, session) => {
   if (id.startsWith("ALLPRODUCTS_PAGE_")) {
     const page = parseInt(id.replace("ALLPRODUCTS_PAGE_", ""));
     return await sendAllProducts(from, session, page);
+  }
+
+  if (id === "MORE_COLLECTIONS") return await sendMoreCollections(from, session);
+
+  if (id.startsWith("COLLECTION_")) {
+    const collectionName = await findRealCollectionName(id.replace("COLLECTION_", ""));
+    if (collectionName) return await sendCollectionProducts(from, session, collectionName);
   }
 
   if (id.startsWith("CAT_")) {
@@ -304,6 +318,17 @@ if (id.startsWith("REMOVE_")) {
 
   await sendWelcomeMenu(from, session);
 };
+
+const findRealCollectionName = async (uppercasedName) => {
+  const normalized = uppercasedName.replace(/_/g, " ");
+  const product = await Product.findOne({
+    collections: new RegExp(`^${normalized}$`, "i"),
+    available: true,
+  });
+  if (!product) return null;
+  return product.collections.find((c) => c.toLowerCase() === normalized.toLowerCase()) || null;
+};
+
 
 const findRealCategoryName = async (uppercasedName) => {
   const normalized = uppercasedName.replace(/_/g, " ");

@@ -116,28 +116,109 @@ const sendMoreCategories = async (to, session) => {
 };
 
 // ─── COLLECTIONS ───
+// ─── COLLECTIONS PAGE 1 — fully dynamic, pulled from actual product tags ───
 const sendCollections = async (to, session) => {
   session.state = "BROWSING_CATEGORIES";
   await session.save();
 
-  const collectionDefs = [
-    { id: "CAT_WORLD_CUP_COLLECTION_26", title: "🌍 World Cup 26", description: "Nigeria & team jerseys", categoryName: "World Cup Collection 26" },
-    { id: "CAT_PSYCHOWRLD_NSFW_COLLECTION", title: "🔞 NSFW Collection", description: "Bold limited pieces", categoryName: "Psychowrld NSFW Collection" },
-  ];
+  const collectionNames = (await Product.distinct("collections", { available: true })).filter((c) => c && c.trim());
 
-  const availableRows = [];
-  for (const def of collectionDefs) {
-    const exists = await Product.findOne({ categories: def.categoryName, available: true });
-    if (exists) availableRows.push({ id: def.id, title: def.title, description: def.description });
-  }
-
-  if (availableRows.length === 0) {
+  if (collectionNames.length === 0) {
     await sendText(to, "😔 No special collections are live right now — check back soon!");
     return await sendShopMenu(to, session);
   }
 
+  const page1 = collectionNames.slice(0, 9);
+  const hasMore = collectionNames.length > 9;
+
+  const rows = page1.map((name) => ({
+    id: `COLLECTION_${name.toUpperCase().replace(/\s/g, "_")}`,
+    title: name.length > 24 ? name.substring(0, 24) : name,
+    description: `Browse ${name}`,
+  }));
+
+  if (hasMore) {
+    rows.push({ id: "MORE_COLLECTIONS", title: "➡️ More Collections", description: "See more" });
+  }
+
   await sendList(to, "✨ Collections", "Our exclusive collections:", "View Collections", [
-    { title: "Special Collections", rows: availableRows },
+    { title: "Special Collections", rows },
+  ]);
+};
+
+// ─── COLLECTIONS PAGE 2 ───
+const sendMoreCollections = async (to, session) => {
+  session.state = "BROWSING_CATEGORIES";
+  await session.save();
+
+  const collectionNames = (await Product.distinct("collections", { available: true })).filter((c) => c && c.trim());
+  const page2 = collectionNames.slice(9);
+
+  const rows = page2.map((name) => ({
+    id: `COLLECTION_${name.toUpperCase().replace(/\s/g, "_")}`,
+    title: name.length > 24 ? name.substring(0, 24) : name,
+    description: `Browse ${name}`,
+  }));
+
+  rows.push({ id: "BROWSE_COLLECTIONS", title: "⬅️ Back", description: "Previous page" });
+
+  await sendList(to, "✨ More Collections", "Select a collection:", "View Collections", [
+    { title: "More Collections", rows },
+  ]);
+};
+
+// ─── PRODUCTS WITHIN A COLLECTION ───
+const sendCollectionProducts = async (to, session, collectionName) => {
+  session.state = "BROWSING_ITEMS";
+  await session.save();
+
+  const products = await Product.find({ collections: collectionName, available: true });
+
+  if (products.length === 0) {
+    await sendText(to, `😔 No items in ${collectionName} right now.`);
+    return await sendCollections(to, session);
+  }
+
+  const withImages = products.filter((p) => p.images && p.images.length > 0);
+
+  if (withImages.length > 0 && CATALOG_ID) {
+    const sectionsMap = {};
+    withImages.forEach((p) => {
+      const primaryCategory = (p.categories && p.categories[0]) || "Other";
+      if (!sectionsMap[primaryCategory]) sectionsMap[primaryCategory] = [];
+      sectionsMap[primaryCategory].push({ product_retailer_id: p._id.toString() });
+    });
+
+    const sections = Object.entries(sectionsMap)
+      .slice(0, 10)
+      .map(([title, product_items]) => ({ title, product_items: product_items.slice(0, 30) }));
+
+    await sendProductList(
+      to,
+      `✨ ${collectionName}`,
+      `Browse ${collectionName} below. Tap any product to view details and add to your cart.`,
+      CATALOG_ID,
+      sections
+    );
+
+    await sendButtons(to, "Need anything else?", [
+      { id: "BROWSE_COLLECTIONS", title: "⬅️ Back" },
+      { id: "VIEW_CART", title: "🛒 My Cart" },
+      { id: "TALK_AGENT", title: "💬 Talk to Agent" },
+    ]);
+    return;
+  }
+
+  const rows = products.slice(0, 9).map((p) => ({
+    id: `ITEM_${p._id}`,
+    title: p.name.length > 24 ? p.name.substring(0, 24) : p.name,
+    description: `₦${p.price.toLocaleString()} • Sizes: ${p.sizes.join(", ")}`,
+  }));
+
+  rows.push({ id: "BROWSE_COLLECTIONS", title: "⬅️ Back", description: "Back to collections" });
+
+  await sendList(to, `✨ ${collectionName}`, "Select an item to add to cart:", "View Items", [
+    { title: collectionName, rows },
   ]);
 };
 
@@ -821,11 +902,13 @@ const sendWebsiteLink = async (to, session) => {
 module.exports = {
   askCustomAttributes,
   sendAllProducts,
+  sendCollections,
+  sendMoreCollections,
+  sendCollectionProducts,
   sendWelcomeMenu,
   sendShopMenu,
   sendCategories,
   sendMoreCategories,
-  sendCollections,
   sendSubcategories,
   sendCategoryAsProductList,
   sendItems,
