@@ -81,9 +81,14 @@ const handleText = async (from, text, session) => {
     const product = await Product.findById(session.pendingProductId);
     if (product) {
       session.pendingColor = text;
-      session.state = "PROCESSING_ORDER_QUEUE"; // reset so next text won't re-enter this block
+      session.state = "PROCESSING_ORDER_QUEUE";
       await session.save();
-      return await askCustomAttributes(from, session, product, session.pendingSize || "One Size", text, 0);
+      const size = session.pendingSize || "One Size";
+      const attrs = product.customAttributes || [];
+      if (attrs.length > 0) {
+        return await askCustomAttributes(from, session, product, size, text, 0);
+      }
+      return await doAddToCart(from, session, product, size, text);
     }
     return await sendWelcomeMenu(from, session);
   }
@@ -165,8 +170,14 @@ const handleButton = async (from, id, session) => {
     const product = await Product.findById(productId);
     if (product) {
       session.pendingProductId = productId;
+      session.state = "PROCESSING_ORDER_QUEUE";
       await session.save();
-      return await askCustomAttributes(from, session, product, session.pendingSize || "One Size", "", 0);
+      const size = session.pendingSize || "One Size";
+      const attrs = product.customAttributes || [];
+      if (attrs.length > 0) {
+        return await askCustomAttributes(from, session, product, size, "", 0);
+      }
+      return await doAddToCart(from, session, product, size, "");
     }
     return await sendWelcomeMenu(from, session);
   }
