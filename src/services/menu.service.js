@@ -38,9 +38,8 @@ const sendWelcomeMenu = async (to, session) => {
       {
         title: "Main Menu",
         rows: [
-          { id: "MAIN_SHOP", title: "🛍️ Visit Psychowrld Store", description: "Browse our full catalog" },
-          { id: "ALL_PRODUCTS", title: "🗂️ All Products", description: "See every item we have" },
-          { id: "CUSTOM_ORDER", title: "✍️ Custom Order", description: "Tell us what you need" },
+            { id: "MAIN_SHOP", title: "🛍️ Visit Psychowrld Store", description: "Browse our full catalog" },
+            { id: "CUSTOM_ORDER", title: "✍️ Custom Order", description: "Tell us what you need" },
           { id: "MANUFACTURING_ENQUIRY", title: "📅 Manufacturing", description: "Book an appointment" },
           { id: "TRACK_ORDER", title: "📦 Track My Order", description: "Check your order status" },
           { id: "VISIT_WEBSITE", title: "🌐 Visit Our Website", description: "See more at psychowrld.co" },
@@ -56,10 +55,16 @@ const sendShopMenu = async (to, session) => {
   session.state = "SHOP_MENU";
   await session.save();
 
-  await sendButtons(to, "🛍️ *Psychowrld Store*\n\nHow would you like to browse?", [
-    { id: "BROWSE_CATEGORIES", title: "📂 Categories" },
-    { id: "BROWSE_COLLECTIONS", title: "✨ Collections" },
-    { id: "VIEW_CART", title: "🛒 My Cart" },
+  await sendList(to, "🛍️ Psychowrld Store", "How would you like to browse?", "Choose an Option", [
+    {
+      title: "Shop",
+      rows: [
+        { id: "BROWSE_CATEGORIES", title: "📂 Categories", description: "Browse by category" },
+        { id: "BROWSE_COLLECTIONS", title: "✨ Collections", description: "Special curated collections" },
+        { id: "ALL_PRODUCTS", title: "🗂️ All Products", description: "See every item we have" },
+        { id: "VIEW_CART", title: "🛒 My Cart", description: "View your cart" },
+      ],
+    },
   ]);
 };
 

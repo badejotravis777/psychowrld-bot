@@ -124,7 +124,6 @@ const handleButton = async (from, id, session) => {
   if (id === "BROWSE_COLLECTIONS") return await sendCollections(from, session);
   if (id === "ALL_PRODUCTS") return await sendAllProducts(from, session);
   if (id === "MORE_CATEGORIES") return await sendMoreCategories(from, session);
-  if (id === "BROWSE_COLLECTIONS") return await sendCollections(from, session);
   if (id === "VIEW_CART") return await sendCartSummary(from, session);
   if (id === "EDIT_ORDER") return await sendEditOrder(from, session);
   if (id === "TRACK_ORDER") return await trackOrder(from);
@@ -229,6 +228,8 @@ const handleListReply = async (from, id, title, session) => {
   if (id === "VISIT_WEBSITE") return await sendWebsiteLink(from, session);
   if (id === "CLEAR_CART") return await removeFromCart(from, session, "CLEAR");
   if (id === "ALL_PRODUCTS") return await sendAllProducts(from, session);
+  if (id === "BROWSE_COLLECTIONS") return await sendCollections(from, session);
+  if (id === "VIEW_CART") return await sendCartSummary(from, session);
 
   if (id.startsWith("ALLPRODUCTS_PAGE_")) {
     const page = parseInt(id.replace("ALLPRODUCTS_PAGE_", ""));
