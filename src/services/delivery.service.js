@@ -70,10 +70,11 @@ const getDrivingDistanceKm = async (origin, destination) => {
     const coords = `${origin.lng},${origin.lat};${destination.lng},${destination.lat}`;
     const url = `https://api.mapbox.com/directions-matrix/v1/mapbox/driving/${coords}`;
     const res = await axios.get(url, {
-      params: { access_token: MAPBOX_TOKEN, sources: "0", destinations: "1", annotations: "distance" },
+      params: { access_token: MAPBOX_TOKEN, annotations: "distance" },
     });
 
-    const meters = res.data?.distances?.[0]?.[0];
+    // Full matrix requested (no sources/destinations restriction) — [0][1] is store → customer
+    const meters = res.data?.distances?.[0]?.[1];
     return meters == null ? null : meters / 1000;
   } catch (err) {
     console.error("❌ Mapbox distance matrix error:", err.response?.data || err.message);
