@@ -27,6 +27,10 @@ const sessionSchema = new mongoose.Schema(
     pendingAttributeIndex: { type: Number, default: 0 },
     orderQueue: [orderQueueItemSchema],
     deliveryAddress: { type: String, default: null },
+    deliveryType: { type: String, default: null }, // "domestic" | "international"
+    deliveryCountry: { type: String, default: null },
+    pendingDeliveryFee: { type: Number, default: null },
+    pendingDeliveryRegion: { type: String, default: null },
     agentMode: { type: Boolean, default: false },
     lastActivity: { type: Date, default: Date.now },
   },

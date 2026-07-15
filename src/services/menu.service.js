@@ -2,7 +2,7 @@ const Product = require("../models/product.model");
 const Session = require("../models/session.model");
 const Order = require("../models/order.model");
 const { sendText, sendButtons, sendList, sendProductList } = require("./whatsapp.service");
-const { calculateDelivery } = require("./delivery.service");
+const { calculateDomesticDelivery, calculateInternationalDelivery } = require("./delivery.service");
 
 const PACKAGING_FEE = 500;
 const CEO_WHATSAPP = "2349049172767";
@@ -714,7 +714,18 @@ const removeFromCart = async (to, session, index) => {
   await sendCartSummary(to, session);
 };
 
-// ─── CHECKOUT - ASK ADDRESS ───
+// ─── CHECKOUT - ASK ADDRESS ───// ─── CHECKOUT - ASK DOMESTIC VS INTERNATIONAL ───
+const askDeliveryType = async (to, session) => {
+  session.state = "AWAITING_DELIVERY_TYPE";
+  await session.save();
+
+  await sendButtons(to, "📦 Where are we delivering to?", [
+    { id: "DELIVERY_DOMESTIC", title: "🇳🇬 Within Nigeria" },
+    { id: "DELIVERY_INTERNATIONAL", title: "🌍 International" },
+  ]);
+};
+
+// ─── CHECKOUT - ASK ADDRESS (DOMESTIC) ───
 const askDeliveryAddress = async (to, session) => {
   session.state = "AWAITING_ADDRESS";
   await session.save();
@@ -725,14 +736,39 @@ const askDeliveryAddress = async (to, session) => {
   );
 };
 
+// ─── CHECKOUT - ASK COUNTRY (INTERNATIONAL) ───
+const askDeliveryCountry = async (to, session) => {
+  session.state = "AWAITING_COUNTRY";
+  await session.save();
+
+  await sendText(to, "🌍 Please type the *country* you're shipping to (e.g. *United Kingdom*, *Ghana*, *United States*):");
+};
+
 // ─── CONFIRM ORDER WITH DELIVERY CALC ───
+// ─── CONFIRM ORDER WITH DELIVERY CALC (DOMESTIC — real distance-based) ───
 const confirmOrderWithAddress = async (to, session, address) => {
   session.deliveryAddress = address;
   await session.save();
 
   await sendText(to, "⏳ Calculating your delivery fee...");
 
-  const deliveryFee = await calculateDelivery(address);
+  const result = await calculateDomesticDelivery(address);
+
+  if (!result.success) {
+    session.state = "AWAITING_ADDRESS";
+    await session.save();
+    await sendButtons(
+      to,
+      "😔 I couldn't pin down that address precisely enough to calculate delivery. Could you add more detail — nearest landmark, full street name — or an agent can confirm your fee manually.",
+      [
+        { id: "RETRY_ADDRESS", title: "📝 Try Again" },
+        { id: "TALK_AGENT", title: "💬 Talk to Agent" },
+      ]
+    );
+    return;
+  }
+
+  const deliveryFee = result.fee;
 
   let subtotal = 0;
   session.cart.forEach((item) => { subtotal += item.price * item.quantity; });
@@ -748,6 +784,8 @@ const confirmOrderWithAddress = async (to, session, address) => {
     deliveryFee,
     total,
     deliveryAddress: address,
+    deliveryType: "domestic",
+    distanceKm: result.distanceKm,
     status: "confirmed",
   });
   await order.save();
@@ -756,7 +794,8 @@ const confirmOrderWithAddress = async (to, session, address) => {
     to,
     `✅ *Order Summary*\n\n` +
       `Order ID: *${order.orderId}*\n` +
-      `Delivery to: ${address}\n\n` +
+      `Delivery to: ${address}\n` +
+      `Distance: ~${result.distanceKm}km\n\n` +
       `Subtotal: ₦${subtotal.toLocaleString()}\n` +
       `Delivery: ₦${deliveryFee.toLocaleString()}\n` +
       `Packaging: ₦${PACKAGING_FEE.toLocaleString()}\n` +
@@ -769,6 +808,118 @@ const confirmOrderWithAddress = async (to, session, address) => {
   );
 
   return order;
+};
+
+// ─── CONFIRM ORDER WITH COUNTRY (INTERNATIONAL) ───
+const confirmOrderWithCountry = async (to, session, country) => {
+  session.deliveryCountry = country;
+  await session.save();
+
+  const result = await calculateInternationalDelivery(country);
+
+  if (!result.success) {
+    session.state = "AWAITING_ADDRESS_MANUAL_QUOTE";
+    await session.save();
+    await sendText(
+      to,
+      `🌍 We don't have a set international rate for *${country}* yet — no worries, our team will confirm your exact delivery fee shortly.\n\n📍 Please share your *full delivery address* so we can prepare your quote:`
+    );
+    return;
+  }
+
+  session.state = "AWAITING_ADDRESS_INTL";
+  session.pendingDeliveryFee = result.fee;
+  session.pendingDeliveryRegion = result.region;
+  await session.save();
+
+  await sendText(
+    to,
+    `✅ Delivery to *${result.region}* is ₦${result.fee.toLocaleString()}.\n\n📍 Please send your *full delivery address* (street, city, postal code):`
+  );
+};
+
+// ─── FINALIZE INTERNATIONAL ORDER (region matched, fee known) ───
+const finalizeInternationalOrder = async (to, session, address) => {
+  session.deliveryAddress = address;
+  const deliveryFee = session.pendingDeliveryFee || 0;
+  const region = session.pendingDeliveryRegion || "";
+
+  let subtotal = 0;
+  session.cart.forEach((item) => { subtotal += item.price * item.quantity; });
+  const total = subtotal + PACKAGING_FEE + deliveryFee;
+
+  session.state = "AWAITING_PAYMENT";
+  session.pendingDeliveryFee = null;
+  session.pendingDeliveryRegion = null;
+  await session.save();
+
+  const order = new Order({
+    waNumber: to,
+    items: session.cart,
+    subtotal,
+    deliveryFee,
+    total,
+    deliveryAddress: address,
+    deliveryType: "international",
+    deliveryRegion: region,
+    status: "confirmed",
+  });
+  await order.save();
+
+  await sendButtons(
+    to,
+    `✅ *Order Summary*\n\n` +
+      `Order ID: *${order.orderId}*\n` +
+      `Delivery to: ${address} (${region})\n\n` +
+      `Subtotal: ₦${subtotal.toLocaleString()}\n` +
+      `Delivery: ₦${deliveryFee.toLocaleString()}\n` +
+      `Packaging: ₦${PACKAGING_FEE.toLocaleString()}\n` +
+      `━━━━━━━━━━━━━\n` +
+      `*Total: ₦${total.toLocaleString()}*`,
+    [
+      { id: `PAY_${order.orderId}`, title: "💳 Pay Now" },
+      { id: "TALK_AGENT", title: "💬 Contact Us" },
+    ]
+  );
+
+  return order;
+};
+
+// ─── FINALIZE INTERNATIONAL ORDER (no region match — agent will quote manually) ───
+const finalizeManualQuoteOrder = async (to, session, address) => {
+  session.deliveryAddress = address;
+
+  let subtotal = 0;
+  session.cart.forEach((item) => { subtotal += item.price * item.quantity; });
+
+  session.state = "IDLE";
+  await session.save();
+
+  const order = new Order({
+    waNumber: to,
+    items: session.cart,
+    subtotal,
+    deliveryFee: 0,
+    total: subtotal + PACKAGING_FEE,
+    deliveryAddress: address,
+    deliveryType: "international",
+    deliveryRegion: "manual_quote_needed",
+    status: "pending",
+  });
+  await order.save();
+
+  await sendText(
+    to,
+    `✅ Got it — order *${order.orderId}* is saved. Our team will confirm your international delivery fee and follow up with you on WhatsApp shortly.`
+  );
+
+  const adminNumber = process.env.ADMIN_WHATSAPP_NUMBER;
+  if (adminNumber) {
+    await sendText(
+      adminNumber,
+      `🌍 *International Order Needs Manual Delivery Quote*\nOrder: ${order.orderId}\nCustomer: +${to}\nCountry: ${session.deliveryCountry}\nAddress: ${address}`
+    );
+  }
 };
 
 // ─── TRACK ORDER ───
@@ -918,8 +1069,13 @@ module.exports = {
   sendCartSummary,
   sendEditOrder,
   removeFromCart,
+  askDeliveryType,
   askDeliveryAddress,
+  askDeliveryCountry,
   confirmOrderWithAddress,
+  confirmOrderWithCountry,
+  finalizeInternationalOrder,
+  finalizeManualQuoteOrder,
   trackOrder,
   sendManufacturingEnquiry,
   sendManufacturingRedirect,

@@ -4,8 +4,9 @@ const {
   sendWelcomeMenu, sendShopMenu, sendCategories, sendMoreCategories,
   sendCollections, sendMoreCollections, sendCollectionProducts, sendSubcategories, sendItems, addToCart, doAddToCart, askColor,
   askCustomAttributes, sendAllProducts,
-  sendCartSummary, sendEditOrder, removeFromCart, askDeliveryAddress,
-  confirmOrderWithAddress, trackOrder, sendManufacturingEnquiry, sendManufacturingRedirect,
+  sendCartSummary, sendEditOrder, removeFromCart, askDeliveryType, askDeliveryAddress,
+  confirmOrderWithAddress, confirmOrderWithCountry, finalizeInternationalOrder, finalizeManualQuoteOrder,
+  trackOrder, sendManufacturingEnquiry, sendManufacturingRedirect,
   handleOrderMessage, sendCustomOrderPrompt, sendWebsiteLink,
 } = require("../services/menu.service");
 const Session = require("../models/session.model");
@@ -65,6 +66,9 @@ const handleText = async (from, text, session) => {
   if (["shop", "shop now", "browse"].includes(lower)) return await sendShopMenu(from, session);
 
   if (session.state === "AWAITING_ADDRESS") return await confirmOrderWithAddress(from, session, text);
+  if (session.state === "AWAITING_COUNTRY") return await confirmOrderWithCountry(from, session, text);
+  if (session.state === "AWAITING_ADDRESS_INTL") return await finalizeInternationalOrder(from, session, text);
+  if (session.state === "AWAITING_ADDRESS_MANUAL_QUOTE") return await finalizeManualQuoteOrder(from, session, text);
 
   
   if (session.state === "AWAITING_CUSTOM_SIZE") {
@@ -125,7 +129,20 @@ const handleButton = async (from, id, session) => {
   if (id === "EDIT_ORDER") return await sendEditOrder(from, session);
   if (id === "TRACK_ORDER") return await trackOrder(from);
   if (id === "TALK_AGENT") return await escalateToAgent(from, session);
-  if (id === "CONFIRM_ORDER") return await askDeliveryAddress(from, session);
+  if (id === "CONFIRM_ORDER") return await askDeliveryType(from, session);
+  if (id === "DELIVERY_DOMESTIC") {
+    session.deliveryType = "domestic";
+    await session.save();
+    return await askDeliveryAddress(from, session);
+  }
+  if (id === "DELIVERY_INTERNATIONAL") {
+    session.deliveryType = "international";
+    session.state = "AWAITING_COUNTRY";
+    await session.save();
+    await sendText(from, "🌍 Please type the *country* you're shipping to (e.g. *United Kingdom*, *Ghana*, *United States*):");
+    return;
+  }
+  if (id === "RETRY_ADDRESS") return await askDeliveryAddress(from, session);
   if (id === "MANUFACTURING_ENQUIRY") return await sendManufacturingEnquiry(from, session);
   if (id === "MANUFACTURING_PROCEED") return await sendManufacturingRedirect(from, session);
   if (id === "CUSTOM_ORDER") return await sendCustomOrderPrompt(from, session);
