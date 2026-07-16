@@ -7,7 +7,7 @@ const {
   sendCartSummary, sendEditOrder, removeFromCart, askDeliveryType, askDeliveryAddress,
   confirmOrderWithAddress, confirmOrderWithCountry, finalizeInternationalOrder, finalizeManualQuoteOrder,
   trackOrder, sendManufacturingEnquiry, sendManufacturingRedirect,
-  handleOrderMessage, sendCustomOrderPrompt, sendWebsiteLink,
+  handleOrderMessage, sendCustomOrderPrompt, sendWebsiteLink, finalizePendingOrder,
 } = require("../services/menu.service");
 const Session = require("../models/session.model");
 const Product = require("../models/product.model");
@@ -59,18 +59,23 @@ const handleIncomingMessage = async (req, res) => {
 const handleText = async (from, text, session) => {
   const lower = text.toLowerCase();
 
-  if (["hi", "hello", "start", "hey", "new order"].includes(lower)) return await sendWelcomeMenu(from, session);
-  if (["track", "track order", "my order"].includes(lower)) return await trackOrder(from);
-  if (["agent", "help", "talk to agent"].includes(lower)) return await escalateToAgent(from, session);
-  if (["cart", "my cart", "view cart"].includes(lower)) return await sendCartSummary(from, session);
-  if (["shop", "shop now", "browse"].includes(lower)) return await sendShopMenu(from, session);
-
+  // ── Active flows always take priority — never interrupted by greetings or name capture ──
   if (session.state === "AWAITING_ADDRESS") return await confirmOrderWithAddress(from, session, text);
   if (session.state === "AWAITING_COUNTRY") return await confirmOrderWithCountry(from, session, text);
   if (session.state === "AWAITING_ADDRESS_INTL") return await finalizeInternationalOrder(from, session, text);
   if (session.state === "AWAITING_ADDRESS_MANUAL_QUOTE") return await finalizeManualQuoteOrder(from, session, text);
 
-  
+  if (session.state === "AWAITING_CONTACT_PHONE") {
+    const cleaned = text.replace(/[^\d+]/g, "");
+    if (cleaned.length < 7) {
+      await sendText(from, "That doesn't look like a valid phone number — could you send it again? (e.g. 08012345678)");
+      return;
+    }
+    session.customerPhone = cleaned;
+    await session.save();
+    return await finalizePendingOrder(from, session);
+  }
+
   if (session.state === "AWAITING_CUSTOM_SIZE") {
     const product = await Product.findById(session.pendingProductId);
     if (product) {
@@ -103,7 +108,7 @@ const handleText = async (from, text, session) => {
     await sendText(from, "✅ Got it! Our team will review your custom order request and get back to you shortly. You can also type *agent* anytime to chat with us directly.");
     const adminNumber = process.env.ADMIN_WHATSAPP_NUMBER;
     if (adminNumber) {
-      await sendText(adminNumber, `🔔 *Custom Order Request*\nCustomer: +${from}\nDetails: ${text}`);
+      await sendText(adminNumber, `🔔 *Custom Order Request*\nCustomer: ${session.customerName || "Unknown"} +${from}\nDetails: ${text}`);
     }
     return;
   }
@@ -122,6 +127,40 @@ const handleText = async (from, text, session) => {
     }
     return;
   }
+
+  // ── Name capture reply — a brand new customer telling us who they are ──
+  if (session.state === "AWAITING_NAME") {
+    const name = extractName(text);
+    if (name) {
+      session.customerName = name;
+      await sendText(from, `Hi ${name}! 😊 Great to meet you.`);
+    } else {
+      await sendText(from, "Nice to meet you! 😊");
+    }
+
+    const intent = detectIntent(text);
+    session.state = "IDLE";
+    await session.save();
+
+    if (intent === "shop") return await sendShopMenu(from, session);
+    if (intent === "track") return await trackOrder(from);
+    if (intent === "agent") return await escalateToAgent(from, session);
+    return await sendWelcomeMenu(from, session);
+  }
+
+  // ── First contact with this customer — ask who they are before anything else ──
+  if (!session.customerName) {
+    session.state = "AWAITING_NAME";
+    await session.save();
+    await sendText(from, "👋 Hi! I'm Mide from Psychowrld.\n\nWhat's your name, and how can I help you today? 😊");
+    return;
+  }
+
+  if (["hi", "hello", "start", "hey", "new order"].includes(lower)) return await sendWelcomeMenu(from, session);
+  if (["track", "track order", "my order"].includes(lower)) return await trackOrder(from);
+  if (["agent", "help", "talk to agent"].includes(lower)) return await escalateToAgent(from, session);
+  if (["cart", "my cart", "view cart"].includes(lower)) return await sendCartSummary(from, session);
+  if (["shop", "shop now", "browse"].includes(lower)) return await sendShopMenu(from, session);
 
   await sendButtons(from, "👋 Not sure what you mean. What would you like to do?", [
     { id: "MAIN_SHOP", title: "🛒 Shop Now" },
@@ -379,6 +418,28 @@ const getSubcategoryForCategory = (product, category) => {
   return product.subcategory || "";
 };
 
+// Very light heuristic — no NLP, just common self-introduction patterns
+const extractName = (text) => {
+  const patterns = [/(?:i'?m|i am|this is|my name is|name'?s)\s+([a-zA-Z]+(?:\s[a-zA-Z]+)?)/i];
+  for (const p of patterns) {
+    const match = text.match(p);
+    if (match && match[1]) return match[1].trim();
+  }
+  const trimmed = text.trim();
+  const words = trimmed.split(/\s+/);
+  if (words.length <= 3 && /^[a-zA-Z\s]+$/.test(trimmed)) return trimmed;
+  return null;
+};
+
+const detectIntent = (text) => {
+  const lower = text.toLowerCase();
+  if (/order|shop|buy|purchase/.test(lower)) return "shop";
+  if (/track/.test(lower)) return "track";
+  if (/agent|help|talk/.test(lower)) return "agent";
+  return null;
+};
+
+
 const findRealSubcategoryName = async (uppercasedName, categoryName) => {
   if (uppercasedName === "NONE") return "";
   const normalized = uppercasedName.replace(/_/g, " ").toLowerCase();
@@ -416,7 +477,7 @@ const escalateToAgent = async (from, session) => {
 
   const adminNumber = process.env.ADMIN_WHATSAPP_NUMBER;
   if (adminNumber) {
-    await sendText(adminNumber, `🔔 *New Agent Request*\nCustomer: +${from}\n\nReply from the admin dashboard: ${process.env.ADMIN_URL}`);
+    await sendText(adminNumber, `🔔 *New Agent Request*\nCustomer: ${session.customerName || "Unknown"} +${from}\n\nReply from the admin dashboard: ${process.env.ADMIN_URL}`);
   }
 };
 

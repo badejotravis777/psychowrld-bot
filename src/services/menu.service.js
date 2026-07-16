@@ -29,10 +29,11 @@ const sendWelcomeMenu = async (to, session) => {
   session.currentCategory = null;
   await session.save();
 
+  const nameGreeting = session.customerName ? `${session.customerName}, hi again! 👋` : "Hi! 👋 I'm Mide.";
   await sendList(
     to,
     "👋 Psychowrld",
-    "Hi! 👋 I'm Mide.\n\nWelcome to Psychowrld. It's great to have you here. 😊\n\nI'm here to help you shop, place a custom order, book a manufacturing appointment, track an order, or answer any questions.\n\nOur team is available from 9:00 AM to 8:00 PM, but don't worry, you don't have to wait. You can place an order or book an appointment anytime, day or night, and we'll get back to you as soon as we're online.\n\nWhat would you like to do today?\n\n_Take your time. I'm here whenever you need me. 💙_",
+    `${nameGreeting}\n\nWelcome to Psychowrld. It's great to have you here. 😊\n\nI'm here to help you shop, place a custom order, book a manufacturing appointment, track an order, or answer any questions.\n\nOur team is available from 9:00 AM to 8:00 PM, but don't worry, you don't have to wait. You can place an order or book an appointment anytime, day or night, and we'll get back to you as soon as we're online.\n\nWhat would you like to do today?\n\n_Take your time. I'm here whenever you need me. 💙_`,
     "Choose an Option",
     [
       {
@@ -719,6 +720,112 @@ const removeFromCart = async (to, session, index) => {
   await sendCartSummary(to, session);
 };
 
+
+
+
+// ─── ASK FOR A CALLABLE PHONE NUMBER — asked once per customer, then reused for every future order ───
+const askContactPhone = async (to, session, finalizeType) => {
+  session.pendingDeliveryFinalizeType = finalizeType;
+  await session.save();
+
+  if (session.customerPhone) {
+    return await finalizePendingOrder(to, session);
+  }
+
+  session.state = "AWAITING_CONTACT_PHONE";
+  await session.save();
+
+  await sendText(to, "📞 Last thing — what's the best *phone number* to reach you on for delivery? (We'll only use this to call about your order.)");
+};
+
+// ─── FINALIZE WHICHEVER ORDER TYPE IS PENDING, NOW THAT WE HAVE NAME + PHONE ───
+const finalizePendingOrder = async (to, session) => {
+  const type = session.pendingDeliveryFinalizeType;
+
+  let subtotal = 0;
+  session.cart.forEach((item) => { subtotal += item.price * item.quantity; });
+
+  let deliveryFee = 0;
+  let orderData = {
+    waNumber: to,
+    items: session.cart,
+    subtotal,
+    customerName: session.customerName || "",
+    contactPhone: session.customerPhone || "",
+    deliveryAddress: session.pendingDeliveryAddress || "",
+  };
+
+  if (type === "domestic") {
+    deliveryFee = session.pendingDeliveryFee || 0;
+    orderData.deliveryFee = deliveryFee;
+    orderData.total = subtotal + PACKAGING_FEE + deliveryFee;
+    orderData.deliveryType = "domestic";
+    orderData.distanceKm = session.pendingDistanceKm;
+    orderData.status = "confirmed";
+  } else if (type === "international") {
+    deliveryFee = session.pendingDeliveryFee || 0;
+    orderData.deliveryFee = deliveryFee;
+    orderData.total = subtotal + PACKAGING_FEE + deliveryFee;
+    orderData.deliveryType = "international";
+    orderData.deliveryRegion = session.pendingDeliveryRegion || "";
+    orderData.status = "confirmed";
+  } else {
+    orderData.deliveryFee = 0;
+    orderData.total = subtotal + PACKAGING_FEE;
+    orderData.deliveryType = "international";
+    orderData.deliveryRegion = "manual_quote_needed";
+    orderData.status = "pending";
+  }
+
+  session.state = "AWAITING_PAYMENT";
+  session.pendingDeliveryAddress = null;
+  session.pendingDeliveryFee = null;
+  session.pendingDeliveryRegion = null;
+  session.pendingDistanceKm = null;
+  session.pendingDeliveryFinalizeType = null;
+  await session.save();
+
+  const order = new Order(orderData);
+  await order.save();
+
+  if (type === "manual") {
+    await sendText(
+      to,
+      `✅ Got it — order *${order.orderId}* is saved. Our team will confirm your international delivery fee and follow up with you on WhatsApp shortly.`
+    );
+    const adminNumber = process.env.ADMIN_WHATSAPP_NUMBER;
+    if (adminNumber) {
+      await sendText(
+        adminNumber,
+        `🌍 *International Order Needs Manual Delivery Quote*\nOrder: ${order.orderId}\nCustomer: ${session.customerName || "Unknown"} (+${to})\nPhone: ${session.customerPhone || "—"}\nCountry: ${session.deliveryCountry}\nAddress: ${orderData.deliveryAddress}`
+      );
+    }
+    return order;
+  }
+
+  const deliveryLine = type === "domestic"
+    ? `Delivery to: ${orderData.deliveryAddress}\nDistance: ~${orderData.distanceKm}km\n\n`
+    : `Delivery to: ${orderData.deliveryAddress} (${orderData.deliveryRegion})\n\n`;
+
+  await sendButtons(
+    to,
+    `✅ *Order Summary*\n\n` +
+      `Order ID: *${order.orderId}*\n` +
+      deliveryLine +
+      `Subtotal: ₦${subtotal.toLocaleString()}\n` +
+      `Delivery: ₦${deliveryFee.toLocaleString()}\n` +
+      `Packaging: ₦${PACKAGING_FEE.toLocaleString()}\n` +
+      `━━━━━━━━━━━━━\n` +
+      `*Total: ₦${orderData.total.toLocaleString()}*`,
+    [
+      { id: `PAY_${order.orderId}`, title: "💳 Pay Now" },
+      { id: "TALK_AGENT", title: "💬 Contact Us" },
+    ]
+  );
+
+  return order;
+};
+
 // ─── CHECKOUT - ASK ADDRESS ───// ─── CHECKOUT - ASK DOMESTIC VS INTERNATIONAL ───
 const askDeliveryType = async (to, session) => {
   session.state = "AWAITING_DELIVERY_TYPE";
@@ -749,12 +856,8 @@ const askDeliveryCountry = async (to, session) => {
   await sendText(to, "🌍 Please type the *country* you're shipping to (e.g. *United Kingdom*, *Ghana*, *United States*):");
 };
 
-// ─── CONFIRM ORDER WITH DELIVERY CALC ───
 // ─── CONFIRM ORDER WITH DELIVERY CALC (DOMESTIC — real distance-based) ───
 const confirmOrderWithAddress = async (to, session, address) => {
-  session.deliveryAddress = address;
-  await session.save();
-
   await sendText(to, "⏳ Calculating your delivery fee...");
 
   const result = await calculateDomesticDelivery(address);
@@ -773,46 +876,12 @@ const confirmOrderWithAddress = async (to, session, address) => {
     return;
   }
 
-  const deliveryFee = result.fee;
-
-  let subtotal = 0;
-  session.cart.forEach((item) => { subtotal += item.price * item.quantity; });
-  const total = subtotal + PACKAGING_FEE + deliveryFee;
-
-  session.state = "AWAITING_PAYMENT";
+  session.pendingDeliveryAddress = address;
+  session.pendingDeliveryFee = result.fee;
+  session.pendingDistanceKm = result.distanceKm;
   await session.save();
 
-  const order = new Order({
-    waNumber: to,
-    items: session.cart,
-    subtotal,
-    deliveryFee,
-    total,
-    deliveryAddress: address,
-    deliveryType: "domestic",
-    distanceKm: result.distanceKm,
-    status: "confirmed",
-  });
-  await order.save();
-
-  await sendButtons(
-    to,
-    `✅ *Order Summary*\n\n` +
-      `Order ID: *${order.orderId}*\n` +
-      `Delivery to: ${address}\n` +
-      `Distance: ~${result.distanceKm}km\n\n` +
-      `Subtotal: ₦${subtotal.toLocaleString()}\n` +
-      `Delivery: ₦${deliveryFee.toLocaleString()}\n` +
-      `Packaging: ₦${PACKAGING_FEE.toLocaleString()}\n` +
-      `━━━━━━━━━━━━━\n` +
-      `*Total: ₦${total.toLocaleString()}*`,
-    [
-      { id: `PAY_${order.orderId}`, title: "💳 Pay Now" },
-      { id: "TALK_AGENT", title: "💬 Contact Us" },
-    ]
-  );
-
-  return order;
+  return await askContactPhone(to, session, "domestic");
 };
 
 // ─── CONFIRM ORDER WITH COUNTRY (INTERNATIONAL) ───
@@ -845,86 +914,18 @@ const confirmOrderWithCountry = async (to, session, country) => {
 
 // ─── FINALIZE INTERNATIONAL ORDER (region matched, fee known) ───
 const finalizeInternationalOrder = async (to, session, address) => {
-  session.deliveryAddress = address;
-  const deliveryFee = session.pendingDeliveryFee || 0;
-  const region = session.pendingDeliveryRegion || "";
-
-  let subtotal = 0;
-  session.cart.forEach((item) => { subtotal += item.price * item.quantity; });
-  const total = subtotal + PACKAGING_FEE + deliveryFee;
-
-  session.state = "AWAITING_PAYMENT";
-  session.pendingDeliveryFee = null;
-  session.pendingDeliveryRegion = null;
+  session.pendingDeliveryAddress = address;
   await session.save();
 
-  const order = new Order({
-    waNumber: to,
-    items: session.cart,
-    subtotal,
-    deliveryFee,
-    total,
-    deliveryAddress: address,
-    deliveryType: "international",
-    deliveryRegion: region,
-    status: "confirmed",
-  });
-  await order.save();
-
-  await sendButtons(
-    to,
-    `✅ *Order Summary*\n\n` +
-      `Order ID: *${order.orderId}*\n` +
-      `Delivery to: ${address} (${region})\n\n` +
-      `Subtotal: ₦${subtotal.toLocaleString()}\n` +
-      `Delivery: ₦${deliveryFee.toLocaleString()}\n` +
-      `Packaging: ₦${PACKAGING_FEE.toLocaleString()}\n` +
-      `━━━━━━━━━━━━━\n` +
-      `*Total: ₦${total.toLocaleString()}*`,
-    [
-      { id: `PAY_${order.orderId}`, title: "💳 Pay Now" },
-      { id: "TALK_AGENT", title: "💬 Contact Us" },
-    ]
-  );
-
-  return order;
+  return await askContactPhone(to, session, "international");
 };
 
 // ─── FINALIZE INTERNATIONAL ORDER (no region match — agent will quote manually) ───
 const finalizeManualQuoteOrder = async (to, session, address) => {
-  session.deliveryAddress = address;
-
-  let subtotal = 0;
-  session.cart.forEach((item) => { subtotal += item.price * item.quantity; });
-
-  session.state = "IDLE";
+  session.pendingDeliveryAddress = address;
   await session.save();
 
-  const order = new Order({
-    waNumber: to,
-    items: session.cart,
-    subtotal,
-    deliveryFee: 0,
-    total: subtotal + PACKAGING_FEE,
-    deliveryAddress: address,
-    deliveryType: "international",
-    deliveryRegion: "manual_quote_needed",
-    status: "pending",
-  });
-  await order.save();
-
-  await sendText(
-    to,
-    `✅ Got it — order *${order.orderId}* is saved. Our team will confirm your international delivery fee and follow up with you on WhatsApp shortly.`
-  );
-
-  const adminNumber = process.env.ADMIN_WHATSAPP_NUMBER;
-  if (adminNumber) {
-    await sendText(
-      adminNumber,
-      `🌍 *International Order Needs Manual Delivery Quote*\nOrder: ${order.orderId}\nCustomer: +${to}\nCountry: ${session.deliveryCountry}\nAddress: ${address}`
-    );
-  }
+  return await askContactPhone(to, session, "manual");
 };
 
 // ─── TRACK ORDER ───
@@ -1057,6 +1058,8 @@ const sendWebsiteLink = async (to, session) => {
 
 module.exports = {
   askCustomAttributes,
+  askContactPhone,
+  finalizePendingOrder,
   sendAllProducts,
   sendCollections,
   sendMoreCollections,

@@ -25,6 +25,11 @@ const sessionSchema = new mongoose.Schema(
     pendingQuantity: { type: Number, default: null },
     pendingAttributes: { type: mongoose.Schema.Types.Mixed, default: {} },
     pendingAttributeIndex: { type: Number, default: 0 },
+    customerName: { type: String, default: null },
+    customerPhone: { type: String, default: null },
+    pendingDeliveryAddress: { type: String, default: null },
+    pendingDistanceKm: { type: Number, default: null },
+    pendingDeliveryFinalizeType: { type: String, default: null },
     orderQueue: [orderQueueItemSchema],
     deliveryAddress: { type: String, default: null },
     deliveryType: { type: String, default: null }, // "domestic" | "international"
