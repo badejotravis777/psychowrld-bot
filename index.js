@@ -6,6 +6,8 @@ const morgan = require("morgan");
 const webhookRoutes = require("./src/routes/webhook.routes");
 const adminRoutes = require("./src/routes/admin.routes");
 const paymentRoutes = require("./src/routes/payment.routes");
+const agentRouter = require("./src/routes/agent.routes");
+
 
 const app = express();
 
@@ -19,6 +21,7 @@ app.use(morgan("dev"));
 app.use("/webhook", webhookRoutes);
 app.use("/admin", adminRoutes);
 app.use("/payment", paymentRoutes);
+app.use("/api/agent", agentRouter);
 
 // Health check
 app.get("/", (req, res) => {

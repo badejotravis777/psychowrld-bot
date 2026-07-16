@@ -108,7 +108,20 @@ const handleText = async (from, text, session) => {
     return;
   }
 
-  if (session.agentMode) { console.log(`📨 Agent msg from ${from}: ${text}`); return; }
+  if (session.agentMode) {
+    console.log(`📨 Agent msg from ${from}: ${text}`);
+    try {
+      const axios = require("axios");
+      await axios.post(
+        `${process.env.ADMIN_URL}/api/agent-sessions/incoming`,
+        { customerNumber: from, text },
+        { headers: { "x-internal-secret": process.env.INTERNAL_API_SECRET } }
+      );
+    } catch (e) {
+      console.error("Forward message error:", e.message);
+    }
+    return;
+  }
 
   await sendButtons(from, "👋 Not sure what you mean. What would you like to do?", [
     { id: "MAIN_SHOP", title: "🛒 Shop Now" },
@@ -388,11 +401,22 @@ const escalateToAgent = async (from, session) => {
   session.state = "AGENT_MODE";
   await session.save();
 
-  await sendText(from, "👤 *Connected to an agent!*\n\nSomeone will be with you shortly.\n\nType *hi* to return to the bot menu.");
+  await sendText(from, "👤 *Connecting you to our team...*\n\nSomeone will be with you shortly. Please hold on. 😊\n\n_You'll be returned to the main menu automatically once your chat ends._");
+
+  try {
+    const axios = require("axios");
+    await axios.post(
+      `${process.env.ADMIN_URL}/api/agent-sessions/incoming`,
+      { customerNumber: from, text: "🔔 Customer requested an agent" },
+      { headers: { "x-internal-secret": process.env.INTERNAL_API_SECRET } }
+    );
+  } catch (e) {
+    console.error("Agent session create error:", e.message);
+  }
 
   const adminNumber = process.env.ADMIN_WHATSAPP_NUMBER;
   if (adminNumber) {
-    await sendText(adminNumber, `🔔 *Agent Request*\nCustomer: +${from}\nReply to them directly on WhatsApp.`);
+    await sendText(adminNumber, `🔔 *New Agent Request*\nCustomer: +${from}\n\nReply from the admin dashboard: ${process.env.ADMIN_URL}`);
   }
 };
 
