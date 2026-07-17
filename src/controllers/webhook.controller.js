@@ -11,6 +11,7 @@ const {
 } = require("../services/menu.service");
 const Session = require("../models/session.model");
 const Product = require("../models/product.model");
+const CustomerServiceContact = require("../models/customer-service-contact.model");
 
 const verifyWebhook = (req, res) => {
   const mode = req.query["hub.mode"];
@@ -462,7 +463,18 @@ const escalateToAgent = async (from, session) => {
   session.state = "AGENT_MODE";
   await session.save();
 
-  await sendText(from, "👤 *Connecting you to our team...*\n\nSomeone will be with you shortly. Please hold on. 😊\n\n_You'll be returned to the main menu automatically once your chat ends._");
+  const contacts = await CustomerServiceContact.find({ active: true }).sort({ order: 1, createdAt: 1 });
+
+  let contactLines = "";
+  if (contacts.length > 0) {
+    contactLines = "\n\nPrefer to chat right away? Reach out to any of our team directly:\n\n" +
+      contacts.map((c) => `💬 *${c.label}*: https://wa.me/${c.number}`).join("\n");
+  }
+
+  await sendText(
+    from,
+    `👤 *Connecting you to our team...*\n\nSomeone will be with you within *10 minutes to 1 hour*. Please hold on. 😊${contactLines}\n\n_You'll be returned to the main menu automatically once your chat ends._`
+  );
 
   try {
     const axios = require("axios");

@@ -23,6 +23,7 @@ app.use("/admin", adminRoutes);
 app.use("/payment", paymentRoutes);
 app.use("/api/agent", agentRouter);
 
+
 // Health check
 app.get("/", (req, res) => {
   res.json({ status: "Psychowrld Bot is running 🚀" });
