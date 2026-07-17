@@ -42,6 +42,8 @@ const syncProductToCatalog = async (product) => {
     const existing = existingRes.data?.data?.[0];
 
     if (existing) {
+      // Product exists — only update name, price, availability
+      // DO NOT touch images to preserve any manually added images in Commerce Manager
       const updatePayload = {
         name: product.name,
         description: product.description || product.name,
